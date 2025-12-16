@@ -30,6 +30,9 @@ protected:
 private slots: // New slot section
     void onTreeSelectionChanged(const QModelIndex &current, const QModelIndex &previous);
     void saveRecord(); // New: Slot to save the edited record
+    void newDatabase(); // New: Slot to clear the current database and start a new one
+    void saveDatabase(); // New: Slot to save the current database
+    void saveDatabaseAs(); // New: Slot to save the current database to a new file
 
 private:
     void setMode(Mode newMode);
@@ -37,6 +40,7 @@ private:
     void setupEditableRecordView(); // New: Setup the editable fields in the right panel
     void enterInsertMode(const QModelIndex &index); // New: Enter insert mode for a specific record
     void exitInsertMode(); // New: Exit insert mode
+    void saveModelToFile(const QString &filePath); // New: Helper to save the tree model to a file
 
     // Tree item manipulation methods
     void moveItemToParentOrRoot();
@@ -63,6 +67,7 @@ private:
     Mode m_currentMode; // Current operational mode of the application
     QStandardItem *m_currentEditedItem; // Pointer to the item currently being edited
     QList<int> m_splitterSizes; // Stores the splitter sizes to restore them
+    QString m_currentFilePath; // Stores the path of the current database file
 };
 
 #endif // MAINWINDOW_H

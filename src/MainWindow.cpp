@@ -12,6 +12,7 @@
 #include <QDebug> // Keep for general debugging, can remove later if desired
 #include <QSizePolicy> // For setting size policies
 #include <QStackedWidget> // For managing stacked widgets
+#include <QFileDialog> // Required for QFileDialog
 
 // Define a simple struct to hold password record data
 struct PasswordRecord {
@@ -437,6 +438,46 @@ void MainWindow::saveRecord()
     exitInsertMode();
 }
 
+void MainWindow::newDatabase() {
+    // Clear the current model
+    m_treeModel->clear();
+    m_treeModel->setHorizontalHeaderLabels({"Items"}); // Re-set header if cleared
+
+    // Clear the current file path
+    m_currentFilePath.clear();
+
+    // Update status bar
+    statusBar()->showMessage(tr("New database created."), 3000);
+    qDebug() << "New database created. Current file path cleared.";
+
+    // Clear record display
+    m_recordDisplay->setText("Select an item from the tree view to see details.");
+}
+
+void MainWindow::saveDatabase() {
+    if (m_currentFilePath.isEmpty()) {
+        // If no file path is set, act as "Save As"
+        saveDatabaseAs();
+    } else {
+        // Save to the current file path
+        saveModelToFile(m_currentFilePath);
+    }
+}
+
+void MainWindow::saveDatabaseAs() {
+    QString filePath = QFileDialog::getSaveFileName(this,
+                                                    tr("Save Password Database"),
+                                                    "",
+                                                    tr("Arcane Lock Database (*.alock);;All Files (*)"));
+
+    if (!filePath.isEmpty()) {
+        m_currentFilePath = filePath;
+        saveModelToFile(m_currentFilePath);
+    } else {
+        statusBar()->showMessage(tr("Save operation cancelled."), 3000);
+    }
+}
+
 void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModelIndex &previous)
 {
     Q_UNUSED(previous);
@@ -480,14 +521,75 @@ void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModel
         
         m_recordDisplay->setHtml(displayHtml.arg(record.name, record.name, record.username, record.password, record.url, record.notes));
 
-    } else {
-        m_recordDisplay->setText("This is a folder or category. Select a password entry to see details.");
     }
 }
 
+#include <functional> // Required for std::function
 
-bool MainWindow::eventFilter(QObject *obj, QEvent *event)
-{
+void MainWindow::saveModelToFile(const QString &filePath) {
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        statusBar()->showMessage(tr("Cannot write file %1:\n%2.").arg(filePath).arg(file.errorString()), 5000);
+        return;
+    }
+
+    QTextStream out(&file);
+    // Write a simple header to indicate this is an ArcaneLock file
+    out << "# ArcaneLock Password Database\n";
+    out << "# Format: Item Name\n";
+    out << "#   field: value\n";
+    out << "#   notes: |\n";
+    out << "#     line 1\n";
+    out << "#     line 2\n";
+    out << "\n";
+
+    // Helper function to recursively save QStandardItem and its children
+    // Using std::function and lambda to capture 'this' and access member variables
+    std::function<void(QTextStream &, QStandardItem *, int)> saveItemRecursive =
+        [&](QTextStream &outStream, QStandardItem *item, int depth) {
+        if (!item) return;
+
+        // Indent based on depth
+        for (int i = 0; i < depth; ++i) {
+            outStream << "  ";
+        }
+
+        // Write item text
+        outStream << "- " << item->text() << "\n";
+
+        // If it has PasswordRecord data, write it
+        if (item->data(Qt::UserRole).canConvert<PasswordRecord>()) {
+            PasswordRecord record = item->data(Qt::UserRole).value<PasswordRecord>();
+            if (!record.isEmpty()) {
+                for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  name: " << record.name << "\n";
+                for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  username: " << record.username << "\n";
+                for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  password: " << record.password << "\n"; // Placeholder: NO ENCRYPTION
+                for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  url: " << record.url << "\n";
+                for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  notes: |\n";
+                QStringList notesLines = record.notes.split('\n');
+                for (const QString &line : notesLines) {
+                    for (int i = 0; i < depth + 2; ++i) { outStream << "  "; } outStream << line << "\n";
+                }
+            }
+        }
+
+        // Recursively save children
+        for (int i = 0; i < item->rowCount(); ++i) {
+            saveItemRecursive(outStream, item->child(i), depth + 1);
+        }
+    };
+
+    QStandardItem *rootItem = m_treeModel->invisibleRootItem();
+    for (int i = 0; i < rootItem->rowCount(); ++i) {
+        saveItemRecursive(out, rootItem->child(i), 0);
+    }
+
+    file.close();
+    statusBar()->showMessage(tr("File saved to %1").arg(filePath), 3000);
+    qDebug() << "Model saved to:" << filePath;
+}
+    bool MainWindow::eventFilter(QObject *obj, QEvent *event)
+    {
     if (event->type() == QEvent::KeyPress) {
         QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
         Qt::Key key = static_cast<Qt::Key>(keyEvent->key());
@@ -496,6 +598,19 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         // Common key bindings (Q to quit)
         if (key == Qt::Key_Q && m_currentMode != Mode::INSERT) {
             QApplication::quit();
+            return true;
+        }
+
+        // New keybindings for file operations
+        if (key == Qt::Key_N && m_currentMode == Mode::TREE) {
+            newDatabase();
+            return true;
+        } else if (key == Qt::Key_S) {
+            if (modifiers & Qt::ShiftModifier) {
+                saveDatabaseAs();
+            } else {
+                saveDatabase();
+            }
             return true;
         }
 
