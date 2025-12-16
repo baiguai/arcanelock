@@ -460,12 +460,14 @@ void MainWindow::saveRecord()
     updatedRecord.url = m_urlEdit->text();
     updatedRecord.notes = m_notesEdit->toPlainText();
 
+    QModelIndex itemIndex = m_currentEditedItem->index(); // Store index before pointer is nulled
+
     m_currentEditedItem->setData(QVariant::fromValue(updatedRecord), Qt::UserRole);
     m_currentEditedItem->setText(updatedRecord.name);
 
     qDebug() << "Record saved for:" << updatedRecord.name;
-    onTreeSelectionChanged(m_currentEditedItem->index(), QModelIndex());
-    exitInsertMode();
+    exitInsertMode(); // This will null m_currentEditedItem
+    onTreeSelectionChanged(itemIndex, QModelIndex()); // Use the stored index
 }
 
 void MainWindow::newDatabase() {
@@ -956,8 +958,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
     }
 
     if (event->type() == QEvent::KeyPress) {
-        // If the event target is a dialog or a child of a modal window, don't process our custom keybindings.
-        // This prevents capturing keys in QFileDialog, for example.
+        // This prevents capturing keys in QFileDialog, for example, which are not children of MainWindow
         QWidget* widget = qobject_cast<QWidget*>(obj);
         if (widget && widget->window() != this && widget->window()->isModal()) {
             return QMainWindow::eventFilter(obj, event);
@@ -967,37 +968,37 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         Qt::Key key = static_cast<Qt::Key>(keyEvent->key());
         Qt::KeyboardModifiers modifiers = keyEvent->modifiers();
 
-        // Common key bindings (Q to quit)
-        if (key == Qt::Key_Q && m_currentMode != Mode::INSERT) {
-            QApplication::quit();
-            return true;
-        }
-
-        // New keybindings for file operations
-        if (key == Qt::Key_N && m_currentMode == Mode::TREE) {
-            newDatabase();
-            return true;
-        } else if (key == Qt::Key_O && m_currentMode == Mode::TREE) {
-            openDatabase();
-            return true;
-        } else if (key == Qt::Key_A && m_currentMode == Mode::TREE) {
-            if (modifiers & Qt::ShiftModifier) {
-                createFolder();
-            } else {
-                createRecord();
-            }
-            return true;
-        } else if (key == Qt::Key_S) {
-            if (modifiers & Qt::ShiftModifier) {
-                saveDatabaseAs();
-            } else {
-                saveDatabase();
-            }
-            return true;
-        }
-
         if (m_currentMode == Mode::TREE) {
-            if (modifiers & Qt::ShiftModifier) { // Handle Shift + H/J/K/L, D, E, C
+            // All TREE mode keybindings go here
+
+            // File and item creation
+            if (key == Qt::Key_Q) {
+                QApplication::quit();
+                return true;
+            } else if (key == Qt::Key_N) {
+                newDatabase();
+                return true;
+            } else if (key == Qt::Key_O) {
+                openDatabase();
+                return true;
+            } else if (key == Qt::Key_A) {
+                if (modifiers & Qt::ShiftModifier) {
+                    createFolder();
+                } else {
+                    createRecord();
+                }
+                return true;
+            } else if (key == Qt::Key_S) {
+                if (modifiers & Qt::ShiftModifier) {
+                    saveDatabaseAs();
+                } else {
+                    saveDatabase();
+                }
+                return true;
+            }
+
+            // Item manipulation (Shift pressed)
+            if (modifiers & Qt::ShiftModifier) {
                 if (key == Qt::Key_H) {
                     moveItemToParentOrRoot();
                     return true;
@@ -1020,8 +1021,8 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                     collapseAllNodes();
                     return true;
                 }
-            } else { // Handle h/j/k/l for navigation without Shift, and 'i' for insert
-                if (key == Qt::Key_I) { // Enter INSERT mode
+            } else { // No Shift modifier
+                if (key == Qt::Key_I) {
                     QModelIndex currentIndex = m_treeView->currentIndex();
                     if (currentIndex.isValid() && m_treeModel->itemFromIndex(currentIndex)->data(Qt::UserRole).canConvert<PasswordRecord>()) {
                         enterInsertMode(currentIndex);
@@ -1029,6 +1030,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                     }
                 }
 
+                // Navigation
                 Qt::Key simulatedKey = Qt::Key_unknown;
                 bool handled = false;
 
@@ -1038,36 +1040,31 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                 } else if (key == Qt::Key_K) { // Up
                     simulatedKey = Qt::Key_Up;
                     handled = true;
-                } else if (key == Qt::Key_H) { // Left
-                    simulatedKey = Qt::Key_Left;
+                } else if (key == Qt::Key_H) { // Left (collapse)
                     QModelIndex currentIndex = m_treeView->currentIndex();
                     if (currentIndex.isValid() && m_treeView->isExpanded(currentIndex)) {
                         m_treeView->collapse(currentIndex);
-                        handled = true;
-                    } else {
-                        handled = true;
+                    } else if (currentIndex.isValid() && currentIndex.parent().isValid()) {
+                        m_treeView->setCurrentIndex(currentIndex.parent());
                     }
-                } else if (key == Qt::Key_L) { // Right
-                    simulatedKey = Qt::Key_Right;
+                    return true;
+                } else if (key == Qt::Key_L) { // Right (expand)
                     QModelIndex currentIndex = m_treeView->currentIndex();
-                    if (currentIndex.isValid() && !m_treeView->isExpanded(currentIndex) && m_treeView->model()->hasChildren(currentIndex)) {
+                    if (currentIndex.isValid() && m_treeView->model()->hasChildren(currentIndex)) {
                         m_treeView->expand(currentIndex);
-                        handled = true;
-                    } else {
-                        handled = true;
                     }
+                    return true;
                 }
 
-                if (handled && simulatedKey != Qt::Key_unknown) {
+                if (handled) {
                     QKeyEvent *simulatedArrowEvent = new QKeyEvent(QEvent::KeyPress, simulatedKey, Qt::NoModifier);
                     QApplication::sendEvent(m_treeView, simulatedArrowEvent);
                     delete simulatedArrowEvent;
                     return true;
-                } else if (handled) {
-                    return true;
                 }
             }
         } else if (m_currentMode == Mode::INSERT) {
+            // INSERT mode keybindings
             if (key == Qt::Key_Escape) {
                 exitInsertMode();
                 return true;
@@ -1115,7 +1112,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         } else if (QTextEdit *textEdit = qobject_cast<QTextEdit*>(obj)) {
             textEdit->selectAll();
         }
-        return false; // Crucially, return false so the event continues to be processed by the widget
+        return false;
     }
     return QMainWindow::eventFilter(obj, event);
 }
