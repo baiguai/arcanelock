@@ -11,6 +11,7 @@
 #include <QTextEdit> // For multiline notes
 #include <QDebug> // Keep for general debugging, can remove later if desired
 #include <QSizePolicy> // For setting size policies
+#include <QStackedWidget> // For managing stacked widgets
 
 // Define a simple struct to hold password record data
 struct PasswordRecord {
@@ -115,18 +116,21 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onTreeSelectionChanged);
 
 
-    // --- Right Panel: Record Display (read-only) ---
+    // --- Right Panel: Stacked Widget for Record Display and Editable View ---
+    m_rightPanelStackedWidget = new QStackedWidget(this);
+    m_splitter->addWidget(m_rightPanelStackedWidget);
+    m_rightPanelStackedWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
     m_recordDisplay = new QTextEdit(this);
     m_recordDisplay->setReadOnly(true);
     m_recordDisplay->setText("Select an item from the tree view to see details.");
-    m_splitter->addWidget(m_recordDisplay);
-    m_recordDisplay->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_rightPanelStackedWidget->addWidget(m_recordDisplay);
 
-    // --- Right Panel: Editable Record View ---
     setupEditableRecordView(); // Initialize the editable view
-    m_splitter->addWidget(m_editableRecordView);
-    m_editableRecordView->hide(); // Start hidden
-    m_editableRecordView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_rightPanelStackedWidget->addWidget(m_editableRecordView);
+
+    m_rightPanelStackedWidget->setCurrentIndex(0); // Show read-only view initially
+
 
     // Set initial sizes for the splitter (e.g., 20% for tree, 80% for display)
     QList<int> sizes;
@@ -163,25 +167,16 @@ void MainWindow::setMode(Mode newMode)
     switch (m_currentMode) {
         case Mode::TREE:
             m_treeView->setFocus();
-            m_recordDisplay->show();
-            m_editableRecordView->hide();
-            if (!m_splitterSizes.isEmpty()) { // Restore sizes if they were saved (e.g., from INSERT mode)
-                m_splitter->setSizes(m_splitterSizes);
-            }
+            m_rightPanelStackedWidget->setCurrentIndex(0); // Show read-only view
             break;
         case Mode::NORMAL:
-            m_recordDisplay->show();
-            m_editableRecordView->hide();
-            if (!m_splitterSizes.isEmpty()) {
-                m_splitter->setSizes(m_splitterSizes);
-            }
+            m_rightPanelStackedWidget->setCurrentIndex(0); // Show read-only view
             break;
         case Mode::INSERT:
             if (m_nameEdit) { // Check if m_nameEdit is valid before setting focus
                 m_nameEdit->setFocus();
             }
-            m_recordDisplay->hide();
-            m_editableRecordView->show();
+            m_rightPanelStackedWidget->setCurrentIndex(1); // Show editable view
             break;
         case Mode::VISUAL:
             break;
@@ -396,6 +391,11 @@ void MainWindow::enterInsertMode(const QModelIndex &index)
     m_notesEdit->setText(record.notes);
 
     setMode(Mode::INSERT);
+    // Restore sizes immediately after setMode, once widgets are visible
+    // This QTimer::singleShot will be removed as part of the QStackedWidget implementation
+    // if (!m_splitterSizes.isEmpty()) {
+    //     QTimer::singleShot(0, this, [this]{ m_splitter->setSizes(m_splitterSizes); });
+    // }
 }
 
 void MainWindow::exitInsertMode()
@@ -408,10 +408,11 @@ void MainWindow::exitInsertMode()
     m_notesEdit->clear();
 
     setMode(Mode::TREE);
-
-    if (!m_splitterSizes.isEmpty()) { // Restore splitter sizes
-        m_splitter->setSizes(m_splitterSizes);
-    }
+    // Restore sizes immediately after setMode, once widgets are visible
+    // This QTimer::singleShot will be removed as part of the QStackedWidget implementation
+    // if (!m_splitterSizes.isEmpty()) {
+    //     QTimer::singleShot(0, this, [this]{ m_splitter->setSizes(m_splitterSizes); });
+    // }
 }
 
 void MainWindow::saveRecord()
