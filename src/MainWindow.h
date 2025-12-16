@@ -68,6 +68,7 @@ private:
     QStandardItem *m_currentEditedItem; // Pointer to the item currently being edited
     QList<int> m_splitterSizes; // Stores the splitter sizes to restore them
     QString m_currentFilePath; // Stores the path of the current database file
+    bool m_isModalDialogActive = false; // Is a modal dialog like 'Save As' currently active?
 };
 
 #endif // MAINWINDOW_H

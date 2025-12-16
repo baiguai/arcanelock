@@ -465,10 +465,12 @@ void MainWindow::saveDatabase() {
 }
 
 void MainWindow::saveDatabaseAs() {
+    m_isModalDialogActive = true; // Set flag before opening dialog
     QString filePath = QFileDialog::getSaveFileName(this,
                                                     tr("Save Password Database"),
                                                     "",
                                                     tr("Arcane Lock Database (*.alock);;All Files (*)"));
+    m_isModalDialogActive = false; // Reset flag after dialog is closed
 
     if (!filePath.isEmpty()) {
         m_currentFilePath = filePath;
@@ -524,6 +526,7 @@ void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModel
     }
 }
 
+#include <QDialog>
 #include <functional> // Required for std::function
 
 void MainWindow::saveModelToFile(const QString &filePath) {
@@ -588,9 +591,22 @@ void MainWindow::saveModelToFile(const QString &filePath) {
     statusBar()->showMessage(tr("File saved to %1").arg(filePath), 3000);
     qDebug() << "Model saved to:" << filePath;
 }
-    bool MainWindow::eventFilter(QObject *obj, QEvent *event)
-    {
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *event)
+{
+    // If a modal dialog is active, don't process any of our custom keybindings.
+    if (m_isModalDialogActive) {
+        return QMainWindow::eventFilter(obj, event);
+    }
+
     if (event->type() == QEvent::KeyPress) {
+        // If the event target is a dialog or a child of a modal window, don't process our custom keybindings.
+        // This prevents capturing keys in QFileDialog, for example.
+        QWidget* widget = qobject_cast<QWidget*>(obj);
+        if (widget && widget->window() != this && widget->window()->isModal()) {
+            return QMainWindow::eventFilter(obj, event);
+        }
+
         QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
         Qt::Key key = static_cast<Qt::Key>(keyEvent->key());
         Qt::KeyboardModifiers modifiers = keyEvent->modifiers();
