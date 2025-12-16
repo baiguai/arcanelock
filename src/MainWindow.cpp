@@ -13,6 +13,9 @@
 #include <QSizePolicy> // For setting size policies
 #include <QStackedWidget> // For managing stacked widgets
 #include <QFileDialog> // Required for QFileDialog
+#include <sodium.h> // Required for libsodium cryptography
+#include "SetMasterPasswordDialog.h" // Required for setting master password
+#include <QInputDialog> // Required for password prompt
 
 // Define a simple struct to hold password record data
 struct PasswordRecord {
@@ -26,6 +29,9 @@ struct PasswordRecord {
         return name.isEmpty() && username.isEmpty() && password.isEmpty() && url.isEmpty() && notes.isEmpty();
     }
 };
+
+#include <QSettings>
+#include <QDir>
 
 // Declare the struct as a metatype so it can be stored in QVariant
 Q_DECLARE_METATYPE(PasswordRecord)
@@ -149,11 +155,35 @@ MainWindow::MainWindow(QWidget *parent)
     // Install event filter for the entire application to catch key presses
     // This allows catching 'q' even if other widgets have focus
     qApp->installEventFilter(this);
+
+    loadRecentFiles();
 }
 
 MainWindow::~MainWindow()
 {
     // Destructor is empty as Qt's parent-child mechanism handles deletion of child widgets
+}
+
+void MainWindow::loadRecentFiles()
+{
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "ArcaneLock", "ArcaneLock");
+    m_recentFiles = settings.value("recentFiles").toStringList();
+}
+
+void MainWindow::saveRecentFiles()
+{
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "ArcaneLock", "ArcaneLock");
+    settings.setValue("recentFiles", m_recentFiles);
+}
+
+void MainWindow::addRecentFile(const QString &filePath)
+{
+    m_recentFiles.removeAll(filePath);
+    m_recentFiles.prepend(filePath);
+    while (m_recentFiles.size() > 20) {
+        m_recentFiles.removeLast();
+    }
+    saveRecentFiles();
 }
 
 void MainWindow::setMode(Mode newMode)
@@ -459,25 +489,294 @@ void MainWindow::saveDatabase() {
         // If no file path is set, act as "Save As"
         saveDatabaseAs();
     } else {
-        // Save to the current file path
-        saveModelToFile(m_currentFilePath);
+        // For existing files, prompt for password
+        bool ok;
+        m_isModalDialogActive = true;
+        QString password = QInputDialog::getText(this, tr("Master Password"),
+                                                 tr("Enter master password to save:"), QLineEdit::Password,
+                                                 QString(), &ok);
+        m_isModalDialogActive = false;
+        if (ok && !password.isEmpty()) {
+            saveModelToFile(m_currentFilePath, password);
+        } else {
+            statusBar()->showMessage(tr("Save cancelled. Master password not provided."), 3000);
+        }
     }
 }
 
 void MainWindow::saveDatabaseAs() {
-    m_isModalDialogActive = true; // Set flag before opening dialog
-    QString filePath = QFileDialog::getSaveFileName(this,
-                                                    tr("Save Password Database"),
-                                                    "",
-                                                    tr("Arcane Lock Database (*.alock);;All Files (*)"));
-    m_isModalDialogActive = false; // Reset flag after dialog is closed
+    // For new files, prompt to set master password
+    SetMasterPasswordDialog passwordDialog(this);
+    m_isModalDialogActive = true;
+    int result = passwordDialog.exec();
+    m_isModalDialogActive = false;
 
-    if (!filePath.isEmpty()) {
-        m_currentFilePath = filePath;
-        saveModelToFile(m_currentFilePath);
+    if (result == QDialog::Accepted) {
+        QString masterPassword = passwordDialog.getPassword();
+
+        m_isModalDialogActive = true; // Set flag before opening dialog
+        QString filePath = QFileDialog::getSaveFileName(this,
+                                                        tr("Save Password Database"),
+                                                        "",
+                                                        tr("Arcane Lock Database (*.alock);;All Files (*)"));
+        m_isModalDialogActive = false; // Reset flag after dialog is closed
+
+        if (!filePath.isEmpty()) {
+            m_currentFilePath = filePath;
+            saveModelToFile(m_currentFilePath, masterPassword);
+        } else {
+            statusBar()->showMessage(tr("Save operation cancelled."), 3000);
+        }
     } else {
-        statusBar()->showMessage(tr("Save operation cancelled."), 3000);
+        statusBar()->showMessage(tr("Save operation cancelled. Master password not set."), 3000);
     }
+}
+
+void MainWindow::openDatabase()
+{
+    m_isModalDialogActive = true;
+    OpenDbDialog openDialog(m_recentFiles, this);
+    m_isModalDialogActive = false;
+
+    if (openDialog.exec() == QDialog::Accepted) {
+        QString selectedPath = openDialog.getSelectedPath();
+        if (selectedPath == "BROWSE") {
+            m_isModalDialogActive = true;
+            QString filePath = QFileDialog::getOpenFileName(this,
+                                                          tr("Open Password Database"),
+                                                          "",
+                                                          tr("Arcane Lock Database (*.alock);;All Files (*)"));
+            m_isModalDialogActive = false;
+            if (!filePath.isEmpty()) {
+                loadFile(filePath);
+            }
+        } else {
+            loadFile(selectedPath);
+        }
+    }
+}
+
+void MainWindow::createFolder()
+{
+    QModelIndex currentIndex = m_treeView->currentIndex();
+    QStandardItem *parentItem = m_treeModel->invisibleRootItem();
+
+    if (currentIndex.isValid()) {
+        QStandardItem *selectedItem = m_treeModel->itemFromIndex(currentIndex);
+        if (selectedItem->data(Qt::UserRole).canConvert<PasswordRecord>()) {
+            // If it's a record, add as sibling
+            parentItem = selectedItem->parent() ? selectedItem->parent() : parentItem;
+        } else {
+            // If it's a folder, add as child
+            parentItem = selectedItem;
+        }
+    }
+
+    QStandardItem *newItem = new QStandardItem("New Folder");
+    parentItem->appendRow(newItem);
+    m_treeView->setCurrentIndex(newItem->index());
+    m_treeView->edit(newItem->index()); // Allow immediate renaming
+}
+
+void MainWindow::createRecord()
+{
+    QModelIndex currentIndex = m_treeView->currentIndex();
+    QStandardItem *parentItem = m_treeModel->invisibleRootItem();
+
+    if (currentIndex.isValid()) {
+        QStandardItem *selectedItem = m_treeModel->itemFromIndex(currentIndex);
+        if (selectedItem->data(Qt::UserRole).canConvert<PasswordRecord>()) {
+            // If it's a record, add as sibling
+            parentItem = selectedItem->parent() ? selectedItem->parent() : parentItem;
+        } else {
+            // If it's a folder, add as child
+            parentItem = selectedItem;
+        }
+    }
+
+    QStandardItem *newItem = new QStandardItem("New Record");
+    PasswordRecord newRecord = {"New Record", "", "", "", ""};
+    newItem->setData(QVariant::fromValue(newRecord), Qt::UserRole);
+
+    parentItem->appendRow(newItem);
+    m_treeView->setCurrentIndex(newItem->index());
+    enterInsertMode(newItem->index());
+}
+
+void MainWindow::loadFile(const QString &filePath)
+{
+    // Prompt for password to load file
+    bool ok;
+    m_isModalDialogActive = true;
+    QString password = QInputDialog::getText(this, tr("Master Password"),
+                                             tr("Enter master password to open:"), QLineEdit::Password,
+                                             QString(), &ok);
+    m_isModalDialogActive = false;
+
+    if (ok && !password.isEmpty()) {
+        loadModelFromFile(filePath, password);
+        addRecentFile(filePath);
+        m_currentFilePath = filePath;
+        statusBar()->showMessage(tr("Loaded %1").arg(filePath), 3000);
+    } else {
+        statusBar()->showMessage(tr("Open cancelled. Master password not provided."), 3000);
+    }
+}
+
+void MainWindow::loadModelFromFile(const QString &filePath, const QString &masterPassword)
+{
+    if (sodium_init() < 0) {
+        statusBar()->showMessage(tr("libsodium initialization failed."), 5000);
+        return;
+    }
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        statusBar()->showMessage(tr("Cannot open file %1:\n%2.").arg(filePath).arg(file.errorString()), 5000);
+        return;
+    }
+
+    QByteArray fileContent = file.readAll();
+    file.close();
+
+    // 1. Read Header
+    QByteArray header = fileContent.mid(0, 8); // "ALOCK_V1" is 8 bytes
+    if (header != "ALOCK_V1") {
+        statusBar()->showMessage(tr("Error: Not a valid ArcaneLock encrypted file (or unknown version)."), 5000);
+        return;
+    }
+    int offset = header.size();
+
+    // 2. Read Argon2 Hash String
+    QByteArray hashedPasswordData = fileContent.mid(offset, crypto_pwhash_STRBYTES);
+    offset += crypto_pwhash_STRBYTES;
+
+    // 3. Read Encryption Salt
+    QByteArray encryptionSaltData = fileContent.mid(offset, crypto_pwhash_SALTBYTES);
+    offset += crypto_pwhash_SALTBYTES;
+
+    // 4. Read Nonce
+    QByteArray nonceData = fileContent.mid(offset, crypto_secretbox_NONCEBYTES);
+    offset += crypto_secretbox_NONCEBYTES;
+
+    // 5. Read Ciphertext
+    QByteArray ciphertext = fileContent.mid(offset);
+
+    // Verify master password
+    if (crypto_pwhash_str_verify(hashedPasswordData.constData(),
+                                 masterPassword.toUtf8().constData(), masterPassword.toUtf8().length()) != 0) {
+        statusBar()->showMessage(tr("Incorrect master password."), 5000);
+        return;
+    }
+
+    // Derive encryption key
+    unsigned char encryptionKey[crypto_secretbox_KEYBYTES];
+    if (crypto_pwhash(encryptionKey, sizeof encryptionKey,
+                      masterPassword.toUtf8().constData(), masterPassword.toUtf8().length(),
+                      reinterpret_cast<const unsigned char*>(encryptionSaltData.constData()),
+                      crypto_pwhash_OPSLIMIT_MODERATE,
+                      crypto_pwhash_MEMLIMIT_MODERATE,
+                      crypto_pwhash_ALG_ARGON2ID13) != 0) {
+        statusBar()->showMessage(tr("Key derivation failed during decryption."), 5000);
+        return;
+    }
+
+    // Decrypt the ciphertext
+    QByteArray decryptedPlaintext(ciphertext.size() - crypto_secretbox_MACBYTES, Qt::Uninitialized);
+    if (crypto_secretbox_open_easy(reinterpret_cast<unsigned char*>(decryptedPlaintext.data()),
+                                   reinterpret_cast<const unsigned char*>(ciphertext.constData()), ciphertext.size(),
+                                   reinterpret_cast<const unsigned char*>(nonceData.constData()),
+                                   encryptionKey) != 0) {
+        statusBar()->showMessage(tr("Decryption failed. Data may be corrupted or password incorrect."), 5000);
+        return;
+    }
+
+    // Deserialize the decrypted plaintext into the model
+    m_treeModel->clear();
+    m_treeModel->setHorizontalHeaderLabels({"Items"});
+
+    QString decryptedDataString = QString::fromUtf8(decryptedPlaintext);
+    QTextStream in(&decryptedDataString);
+    QList<QStandardItem*> parentStack;
+    parentStack.append(m_treeModel->invisibleRootItem());
+
+    QStandardItem *currentItem = nullptr;
+    PasswordRecord currentRecord;
+
+    while (!in.atEnd()) {
+        QString line = in.readLine();
+        if (line.trimmed().isEmpty() || line.trimmed().startsWith('#')) {
+            continue;
+        }
+
+        int indentation = 0;
+        while (indentation < line.length() && line[indentation] == ' ') {
+            indentation++;
+        }
+        int level = indentation / 2;
+
+        if (line.trimmed().startsWith("- ")) {
+            // New item
+            if (currentItem) {
+                if (!currentRecord.isEmpty()) {
+                    currentItem->setData(QVariant::fromValue(currentRecord), Qt::UserRole);
+                }
+                currentRecord = PasswordRecord();
+            }
+
+            QString itemName = line.trimmed().mid(2);
+            currentItem = new QStandardItem(itemName);
+
+            while (level < parentStack.size() - 1) {
+                parentStack.removeLast();
+            }
+            parentStack.last()->appendRow(currentItem);
+            parentStack.append(currentItem);
+
+        } else if (currentItem) {
+            // Part of the current item's record
+            QString trimmedLine = line.trimmed();
+            int colonIndex = trimmedLine.indexOf(':');
+            if (colonIndex > 0) {
+                QString key = trimmedLine.left(colonIndex).trimmed();
+                QString value = trimmedLine.mid(colonIndex + 1).trimmed();
+
+                if (key == "name") currentRecord.name = value;
+                else if (key == "username") currentRecord.username = value;
+                else if (key == "password") currentRecord.password = value;
+                else if (key == "url") currentRecord.url = value;
+                else if (key == "notes" && value == "|") {
+                    QStringList notesLines;
+                    while (!in.atEnd()) {
+                        qint64 lastPos = in.pos(); // Save current position
+                        QString noteLine = in.readLine();
+                        int noteIndentation = 0;
+                        while (noteIndentation < noteLine.length() && noteLine[noteIndentation] == ' ') {
+                            noteIndentation++;
+                        }
+                        // Check if the note line is more indented than the expected level for record fields
+                        // This assumes note lines are indented by at least `indentation + 2`
+                        if (noteIndentation > indentation + 2) {
+                            notesLines.append(noteLine.trimmed());
+                        } else {
+                            // If not, it means the note block has ended. Seek back to read this line again
+                            // as it might be a new record item or another field.
+                            in.seek(lastPos);
+                            break;
+                        }
+                    }
+                    currentRecord.notes = notesLines.join('\n');
+                }
+            }
+        }
+    }
+
+    if (currentItem && !currentRecord.isEmpty()) {
+        currentItem->setData(QVariant::fromValue(currentRecord), Qt::UserRole);
+    }
+
+    // No need to close file here, already done after reading all content.
+    m_treeView->expandAll();
 }
 
 void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModelIndex &previous)
@@ -526,18 +825,44 @@ void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModel
     }
 }
 
-#include <QDialog>
-#include <functional> // Required for std::function
+// Helper function to recursively serialize QStandardItem and its children into a QString
+void serializeItemRecursiveToString(QTextStream &outStream, QStandardItem *item, int depth) {
+    if (!item) return;
 
-void MainWindow::saveModelToFile(const QString &filePath) {
-    QFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        statusBar()->showMessage(tr("Cannot write file %1:\n%2.").arg(filePath).arg(file.errorString()), 5000);
-        return;
+    // Indent based on depth
+    for (int i = 0; i < depth; ++i) {
+        outStream << "  ";
     }
 
-    QTextStream out(&file);
-    // Write a simple header to indicate this is an ArcaneLock file
+    // Write item text
+    outStream << "- " << item->text() << "\n";
+
+    // If it has PasswordRecord data, write it
+    if (item->data(Qt::UserRole).canConvert<PasswordRecord>()) {
+        PasswordRecord record = item->data(Qt::UserRole).value<PasswordRecord>();
+        if (!record.isEmpty()) {
+            for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  name: " << record.name << "\n";
+            for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  username: " << record.username << "\n";
+            for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  password: " << record.password << "\n"; // Placeholder: NO ENCRYPTION
+            for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  url: " << record.url << "\n";
+            for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  notes: |\n";
+            QStringList notesLines = record.notes.split('\n');
+            for (const QString &line : notesLines) {
+                for (int i = 0; i < depth + 2; ++i) { outStream << "  "; } outStream << line << "\n";
+            }
+        }
+    }
+
+    // Recursively serialize children
+    for (int i = 0; i < item->rowCount(); ++i) {
+        serializeItemRecursiveToString(outStream, item->child(i), depth + 1);
+    }
+}
+
+QByteArray MainWindow::serializeModelToByteArray() {
+    QString strData;
+    QTextStream out(&strData);
+
     out << "# ArcaneLock Password Database\n";
     out << "# Format: Item Name\n";
     out << "#   field: value\n";
@@ -546,50 +871,81 @@ void MainWindow::saveModelToFile(const QString &filePath) {
     out << "#     line 2\n";
     out << "\n";
 
-    // Helper function to recursively save QStandardItem and its children
-    // Using std::function and lambda to capture 'this' and access member variables
-    std::function<void(QTextStream &, QStandardItem *, int)> saveItemRecursive =
-        [&](QTextStream &outStream, QStandardItem *item, int depth) {
-        if (!item) return;
-
-        // Indent based on depth
-        for (int i = 0; i < depth; ++i) {
-            outStream << "  ";
-        }
-
-        // Write item text
-        outStream << "- " << item->text() << "\n";
-
-        // If it has PasswordRecord data, write it
-        if (item->data(Qt::UserRole).canConvert<PasswordRecord>()) {
-            PasswordRecord record = item->data(Qt::UserRole).value<PasswordRecord>();
-            if (!record.isEmpty()) {
-                for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  name: " << record.name << "\n";
-                for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  username: " << record.username << "\n";
-                for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  password: " << record.password << "\n"; // Placeholder: NO ENCRYPTION
-                for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  url: " << record.url << "\n";
-                for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  notes: |\n";
-                QStringList notesLines = record.notes.split('\n');
-                for (const QString &line : notesLines) {
-                    for (int i = 0; i < depth + 2; ++i) { outStream << "  "; } outStream << line << "\n";
-                }
-            }
-        }
-
-        // Recursively save children
-        for (int i = 0; i < item->rowCount(); ++i) {
-            saveItemRecursive(outStream, item->child(i), depth + 1);
-        }
-    };
-
     QStandardItem *rootItem = m_treeModel->invisibleRootItem();
     for (int i = 0; i < rootItem->rowCount(); ++i) {
-        saveItemRecursive(out, rootItem->child(i), 0);
+        serializeItemRecursiveToString(out, rootItem->child(i), 0);
+    }
+    return strData.toUtf8();
+}
+
+#include <QDialog>
+#include <functional> // Required for std::function
+
+void MainWindow::saveModelToFile(const QString &filePath, const QString &masterPassword) {
+    if (sodium_init() < 0) {
+        statusBar()->showMessage(tr("libsodium initialization failed."), 5000);
+        return;
     }
 
+    QByteArray plaintext = serializeModelToByteArray();
+    
+    // 1. Argon2 password hashing for verification (contains its own salt and params)
+    char hashedPasswordStr[crypto_pwhash_STRBYTES];
+    if (crypto_pwhash_str(hashedPasswordStr,
+                          masterPassword.toUtf8().constData(), masterPassword.toUtf8().length(),
+                          crypto_pwhash_OPSLIMIT_MODERATE,
+                          crypto_pwhash_MEMLIMIT_MODERATE) != 0) {
+        statusBar()->showMessage(tr("Password hashing for verification failed."), 5000);
+        return;
+    }
+    QByteArray hashedPasswordData(hashedPasswordStr, crypto_pwhash_STRBYTES);
+
+    // 2. Generate a separate salt for key derivation
+    unsigned char encryptionSalt[crypto_pwhash_SALTBYTES];
+    randombytes_buf(encryptionSalt, sizeof encryptionSalt);
+
+    // 3. Derive a raw encryption key from master password and encryption salt
+    unsigned char encryptionKey[crypto_secretbox_KEYBYTES];
+    if (crypto_pwhash(encryptionKey, sizeof encryptionKey,
+                      masterPassword.toUtf8().constData(), masterPassword.toUtf8().length(),
+                      encryptionSalt,
+                      crypto_pwhash_OPSLIMIT_MODERATE,
+                      crypto_pwhash_MEMLIMIT_MODERATE,
+                      crypto_pwhash_ALG_ARGON2ID13) != 0) {
+        statusBar()->showMessage(tr("Key derivation for encryption failed."), 5000);
+        return;
+    }
+
+    // 4. Generate a random nonce
+    unsigned char nonce[crypto_secretbox_NONCEBYTES];
+    randombytes_buf(nonce, sizeof nonce);
+
+    // 5. Encrypt the plaintext
+    QByteArray ciphertext(plaintext.size() + crypto_secretbox_MACBYTES, Qt::Uninitialized);
+    if (crypto_secretbox_easy(reinterpret_cast<unsigned char*>(ciphertext.data()),
+                              reinterpret_cast<const unsigned char*>(plaintext.constData()), plaintext.size(),
+                              nonce, encryptionKey) != 0) {
+        statusBar()->showMessage(tr("Encryption failed."), 5000);
+        return;
+    }
+
+    // Write to file
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        statusBar()->showMessage(tr("Cannot write file %1:\n%2.").arg(filePath).arg(file.errorString()), 5000);
+        return;
+    }
+
+    QByteArray header = "ALOCK_V1"; // 8 bytes for header
+    file.write(header);
+    file.write(hashedPasswordData);       // Argon2 hash string for verification
+    file.write(QByteArray(reinterpret_cast<const char*>(encryptionSalt), sizeof encryptionSalt)); // Salt for key derivation
+    file.write(QByteArray(reinterpret_cast<const char*>(nonce), sizeof nonce)); // Nonce for encryption
+    file.write(ciphertext);
+
     file.close();
-    statusBar()->showMessage(tr("File saved to %1").arg(filePath), 3000);
-    qDebug() << "Model saved to:" << filePath;
+    statusBar()->showMessage(tr("File saved and encrypted to %1").arg(filePath), 3000);
+    qDebug() << "Model saved and encrypted to:" << filePath;
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
@@ -620,6 +976,16 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         // New keybindings for file operations
         if (key == Qt::Key_N && m_currentMode == Mode::TREE) {
             newDatabase();
+            return true;
+        } else if (key == Qt::Key_O && m_currentMode == Mode::TREE) {
+            openDatabase();
+            return true;
+        } else if (key == Qt::Key_A && m_currentMode == Mode::TREE) {
+            if (modifiers & Qt::ShiftModifier) {
+                createFolder();
+            } else {
+                createRecord();
+            }
             return true;
         } else if (key == Qt::Key_S) {
             if (modifiers & Qt::ShiftModifier) {

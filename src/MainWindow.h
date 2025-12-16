@@ -8,6 +8,9 @@
 #include <QLabel>
 #include <QStandardItemModel> // For the tree view data
 #include <QStackedWidget> // New: For managing stacked widgets
+#include <QStringList> // Required for recent files list
+
+#include "OpenDbDialog.h" // The new dialog for opening files
 
 class MainWindow : public QMainWindow
 {
@@ -33,6 +36,9 @@ private slots: // New slot section
     void newDatabase(); // New: Slot to clear the current database and start a new one
     void saveDatabase(); // New: Slot to save the current database
     void saveDatabaseAs(); // New: Slot to save the current database to a new file
+    void openDatabase(); // New: Slot to open a database
+    void createFolder(); // New: Slot to create a new folder
+    void createRecord(); // New: Slot to create a new password record
 
 private:
     void setMode(Mode newMode);
@@ -40,7 +46,13 @@ private:
     void setupEditableRecordView(); // New: Setup the editable fields in the right panel
     void enterInsertMode(const QModelIndex &index); // New: Enter insert mode for a specific record
     void exitInsertMode(); // New: Exit insert mode
-    void saveModelToFile(const QString &filePath); // New: Helper to save the tree model to a file
+    void saveModelToFile(const QString &filePath, const QString &masterPassword); // New: Helper to save the tree model to a file
+    void loadModelFromFile(const QString &filePath, const QString &masterPassword); // New: Helper to load the tree model from a file
+    void loadRecentFiles(); // New: Load the list of recent files
+    void saveRecentFiles(); // New: Save the list of recent files
+    void addRecentFile(const QString &filePath); // New: Add a file to the recent files list
+    void loadFile(const QString &filePath); // New: Load a specific file
+    QByteArray serializeModelToByteArray(); // New: Helper to serialize the model into a QByteArray
 
     // Tree item manipulation methods
     void moveItemToParentOrRoot();
@@ -69,6 +81,7 @@ private:
     QList<int> m_splitterSizes; // Stores the splitter sizes to restore them
     QString m_currentFilePath; // Stores the path of the current database file
     bool m_isModalDialogActive = false; // Is a modal dialog like 'Save As' currently active?
+    QStringList m_recentFiles; // Stores the list of recently opened files
 };
 
 #endif // MAINWINDOW_H
