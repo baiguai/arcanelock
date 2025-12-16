@@ -65,64 +65,11 @@ MainWindow::MainWindow(QWidget *parent)
     m_treeModel = new QStandardItemModel(this);
     m_treeView->setModel(m_treeModel);
 
-    // Add some dummy data to the tree view with more nesting and PasswordRecord data
-    QStandardItem *rootItem = m_treeModel->invisibleRootItem();
-
-    QStandardItem *category1 = new QStandardItem("Work");
-    rootItem->appendRow(category1);
-
-    QStandardItem *item1_1 = new QStandardItem("GitHub");
-    PasswordRecord githubRecord = {"GitHub", "mygithubuser", "githubpass123", "https://github.com", "My GitHub account"};
-    item1_1->setData(QVariant::fromValue(githubRecord), Qt::UserRole);
-    category1->appendRow(item1_1);
-
-    QStandardItem *item1_2 = new QStandardItem("Jira");
-    PasswordRecord jiraRecord = {"Jira", "myjiradeveloper", "jirapassword!23", "https://jira.company.com", "Project management tool"};
-    item1_2->setData(QVariant::fromValue(jiraRecord), Qt::UserRole);
-    category1->appendRow(item1_2);
-
-    QStandardItem *item1_3 = new QStandardItem("Work Projects");
-    category1->appendRow(item1_3);
-
-    QStandardItem *subitem1_3_1 = new QStandardItem("Project X Login");
-    PasswordRecord projectXRecord = {"Project X", "dev_user", "securepassX", "https://projectx.company.com", "Login for Project X dev environment"};
-    subitem1_3_1->setData(QVariant::fromValue(projectXRecord), Qt::UserRole);
-    item1_3->appendRow(subitem1_3_1);
-
-    QStandardItem *subitem1_3_2 = new QStandardItem("Project Y VPN");
-    PasswordRecord projectYRecord = {"Project Y VPN", "vpnuser", "vpnsecureY", "vpn.company.com", "VPN access for Project Y"};
-    subitem1_3_2->setData(QVariant::fromValue(projectYRecord), Qt::UserRole);
-    item1_3->appendRow(subitem1_3_2);
-
-
-    QStandardItem *category2 = new QStandardItem("Personal");
-    rootItem->appendRow(category2);
-
-    QStandardItem *item2_1 = new QStandardItem("Email");
-    PasswordRecord emailRecord = {"Personal Email", "myemail@example.com", "mysecretemailpass", "https://mail.example.com", "My personal email account"};
-    item2_1->setData(QVariant::fromValue(emailRecord), Qt::UserRole);
-    category2->appendRow(item2_1);
-
-    QStandardItem *item2_2 = new QStandardItem("Banking");
-    PasswordRecord bankingRecord = {"Bank Account", "bankuser", "bankpass123!", "https://mybank.com", "Online banking login"};
-    item2_2->setData(QVariant::fromValue(bankingRecord), Qt::UserRole);
-    category2->appendRow(item2_2);
-
-    QStandardItem *item2_3 = new QStandardItem("Hobbies");
-    category2->appendRow(item2_3);
-
-    QStandardItem *subitem2_3_1 = new QStandardItem("Gaming Platform");
-    PasswordRecord gamingRecord = {"Gaming Platform", "gamer_tag", "gamepass456", "https://gamingplatform.com", "My gaming account"};
-    subitem2_3_1->setData(QVariant::fromValue(gamingRecord), Qt::UserRole);
-    item2_3->appendRow(subitem2_3_1);
-
-    QStandardItem *subitem2_3_2 = new QStandardItem("E-book Reader");
-    PasswordRecord ebookRecord = {"E-book Reader", "ebookuser", "bookloverpass", "https://ebooks.com", "Account for e-books"};
-    subitem2_3_2->setData(QVariant::fromValue(ebookRecord), Qt::UserRole);
-    item2_3->appendRow(subitem2_3_2);
-
-
-    m_treeView->expandAll(); // Start expanded
+    // --- NO DUMMY DATA ---
+    // The tree view starts empty as per new requirement.
+    // All dummy data creation lines removed.
+    
+    // m_treeView->expandAll(); // No longer needed as tree starts empty
     m_treeView->header()->hide(); // Hide header for a cleaner look
     m_treeView->setEditTriggers(QAbstractItemView::NoEditTriggers); // Make items read-only
     m_treeView->setFocusPolicy(Qt::StrongFocus); // Ensure tree view can receive focus
@@ -190,6 +137,12 @@ MainWindow::MainWindow(QWidget *parent)
     qApp->installEventFilter(this);
 
     loadRecentFiles();
+
+    // As per new requirement: Do not load the most recent file on startup.
+    // The application should always launch with an empty database.
+    // if (!m_recentFiles.isEmpty()) {
+    //     loadFile(m_recentFiles.first(), true); // Pass true for isStartup
+    // }
 }
 
 MainWindow::~MainWindow()
@@ -377,7 +330,7 @@ void MainWindow::moveItemIntoSiblingFolder() {
         return;
     }
 
-    QList<QStandardItem*> itemsToMove = containerItem->takeRow(currentRow);
+    QList<QStandardItem*> itemsToMove = parentItem->takeRow(currentRow); // Changed from containerItem->takeRow to parentItem->takeRow
     if (itemsToMove.isEmpty()) {
         return;
     }
@@ -637,37 +590,56 @@ void MainWindow::createRecord()
     enterInsertMode(newItem->index());
 }
 
-void MainWindow::loadFile(const QString &filePath)
+void MainWindow::loadFile(const QString &filePath, bool isStartup)
 {
     // Prompt for password to load file
     bool ok;
     m_isModalDialogActive = true;
-    QString password = QInputDialog::getText(this, tr("Master Password"),
+    QString password = QInputDialog::getText(this, tr("Master Password for %1:").arg(QFileInfo(filePath).fileName()), // Display file name
                                              tr("Enter master password to open:"), QLineEdit::Password,
                                              QString(), &ok);
     m_isModalDialogActive = false;
 
     if (ok && !password.isEmpty()) {
-        loadModelFromFile(filePath, password);
-        addRecentFile(filePath);
-        m_currentFilePath = filePath;
-        statusBar()->showMessage(tr("Loaded %1").arg(filePath), 3000);
+        if (loadModelFromFile(filePath, password)) { // Assuming loadModelFromFile returns bool for success
+            addRecentFile(filePath);
+            m_currentFilePath = filePath;
+            statusBar()->showMessage(tr("Loaded %1").arg(filePath), 3000);
+        } else {
+            // If loading failed (e.g., incorrect password)
+            if (isStartup) {
+                newDatabase(); // Reset to blank state
+                m_recentFiles.removeAll(filePath); // Remove the problematic file from recent list
+                saveRecentFiles();
+                m_currentFilePath.clear(); // Ensure no invalid path is kept
+                statusBar()->showMessage(tr("Failed to load recent file. Starting with an empty database."), 5000);
+            } else {
+                statusBar()->showMessage(tr("Failed to load file %1. Password might be incorrect or file corrupted.").arg(filePath), 5000);
+            }
+        }
     } else {
         statusBar()->showMessage(tr("Open cancelled. Master password not provided."), 3000);
+        if (isStartup) {
+            newDatabase(); // Reset to blank state
+            m_recentFiles.removeAll(filePath); // Remove the problematic file from recent list
+            saveRecentFiles();
+            m_currentFilePath.clear(); // Ensure no invalid path is kept
+        }
     }
 }
 
-void MainWindow::loadModelFromFile(const QString &filePath, const QString &masterPassword)
+// Modify loadModelFromFile to return bool indicating success or failure
+bool MainWindow::loadModelFromFile(const QString &filePath, const QString &masterPassword)
 {
     if (sodium_init() < 0) {
         statusBar()->showMessage(tr("libsodium initialization failed."), 5000);
-        return;
+        return false;
     }
 
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly)) {
         statusBar()->showMessage(tr("Cannot open file %1:\n%2.").arg(filePath).arg(file.errorString()), 5000);
-        return;
+        return false;
     }
 
     QByteArray fileContent = file.readAll();
@@ -677,7 +649,7 @@ void MainWindow::loadModelFromFile(const QString &filePath, const QString &maste
     QByteArray header = fileContent.mid(0, 8); // "ALOCK_V1" is 8 bytes
     if (header != "ALOCK_V1") {
         statusBar()->showMessage(tr("Error: Not a valid ArcaneLock encrypted file (or unknown version)."), 5000);
-        return;
+        return false;
     }
     int offset = header.size();
 
@@ -700,7 +672,7 @@ void MainWindow::loadModelFromFile(const QString &filePath, const QString &maste
     if (crypto_pwhash_str_verify(hashedPasswordData.constData(),
                                  masterPassword.toUtf8().constData(), masterPassword.toUtf8().length()) != 0) {
         statusBar()->showMessage(tr("Incorrect master password."), 5000);
-        return;
+        return false;
     }
 
     // Derive encryption key
@@ -712,7 +684,7 @@ void MainWindow::loadModelFromFile(const QString &filePath, const QString &maste
                       crypto_pwhash_MEMLIMIT_MODERATE,
                       crypto_pwhash_ALG_ARGON2ID13) != 0) {
         statusBar()->showMessage(tr("Key derivation failed during decryption."), 5000);
-        return;
+        return false;
     }
 
     // Decrypt the ciphertext
@@ -722,7 +694,7 @@ void MainWindow::loadModelFromFile(const QString &filePath, const QString &maste
                                    reinterpret_cast<const unsigned char*>(nonceData.constData()),
                                    encryptionKey) != 0) {
         statusBar()->showMessage(tr("Decryption failed. Data may be corrupted or password incorrect."), 5000);
-        return;
+        return false;
     }
 
     // Deserialize the decrypted plaintext into the model
@@ -811,6 +783,7 @@ void MainWindow::loadModelFromFile(const QString &filePath, const QString &maste
 
     // No need to close file here, already done after reading all content.
     m_treeView->expandAll();
+    return true; // Indicate success
 }
 
 void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModelIndex &previous)
@@ -935,22 +908,22 @@ void MainWindow::jumpToSearchResult(const QModelIndex &index)
         // This might happen if the originalItem is no longer part of the model.
         // It could also happen if the model was cleared or reset since the search.
         // For debugging, let's try to find it from the root if originalItem is still valid.
+        // This is a workaround for debugging, not a long-term solution.
         // In a real app, if originalItem's index() is invalid, it means it's detached.
-
-        // Attempt to re-find the item in the main model. This is a workaround for debugging,
-        // and points to a deeper issue if originalItem->index() is consistently invalid.
+        
+        // Let's try to re-find the item in the actual tree model based on its text and original item pointer.
+        // This is a heuristic and might not be perfect for identical item texts.
         QList<QStandardItem*> foundItems = m_treeModel->findItems(originalItem->text(), Qt::MatchRecursive);
-        if (!foundItems.isEmpty()) {
-            // Find the item that matches the pointer if possible
-            for (QStandardItem* foundItem : foundItems) {
-                if (foundItem == originalItem) {
-                    treeIndex = foundItem->index();
-                    qDebug() << "jumpToSearchResult: Refound item with valid treeIndex:" << treeIndex.isValid(); // DEBUG
-                    break;
-                }
+        for (QStandardItem* foundItem : foundItems) {
+            // Check if the found item's data matches the original item's data (especially the PasswordRecord)
+            // A more robust comparison might be needed for real applications.
+            if (foundItem->data(Qt::UserRole) == originalItem->data(Qt::UserRole) && foundItem->text() == originalItem->text()) {
+                treeIndex = foundItem->index();
+                qDebug() << "jumpToSearchResult: Refound item via findItems. New treeIndex valid:" << treeIndex.isValid(); // DEBUG
+                break;
             }
         }
-
+        
         if (!treeIndex.isValid()) { // If still not valid after re-finding, then give up.
             qDebug() << "jumpToSearchResult: Still no valid treeIndex after re-finding. Aborting."; // DEBUG
             return;

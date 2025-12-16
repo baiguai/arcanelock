@@ -54,11 +54,11 @@ private:
     void enterInsertMode(const QModelIndex &index); // New: Enter insert mode for a specific record
     void exitInsertMode(); // New: Exit insert mode
     void saveModelToFile(const QString &filePath, const QString &masterPassword); // New: Helper to save the tree model to a file
-    void loadModelFromFile(const QString &filePath, const QString &masterPassword); // New: Helper to load the tree model from a file
+    bool loadModelFromFile(const QString &filePath, const QString &masterPassword); // New: Helper to load the tree model from a file
     void loadRecentFiles(); // New: Load the list of recent files
     void saveRecentFiles(); // New: Save the list of recent files
     void addRecentFile(const QString &filePath); // New: Add a file to the recent files list
-    void loadFile(const QString &filePath); // New: Load a specific file
+    void loadFile(const QString &filePath, bool isStartup = false); // New: Load a specific file, with optional startup flag
     QByteArray serializeModelToByteArray(); // New: Helper to serialize the model into a QByteArray
 
     // Tree item manipulation methods
