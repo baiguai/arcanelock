@@ -386,13 +386,6 @@ void MainWindow::setupEditableRecordView()
     m_urlEdit->setObjectName("urlEdit");
     m_notesEdit->setObjectName("notesEdit");
 
-    // Apply dark theme styling to new widgets
-    m_nameEdit->setStyleSheet("QLineEdit { background-color: #3c3c3c; color: #f2f2f2; border: 1px solid #555555; padding: 5px; }");
-    m_usernameEdit->setStyleSheet("QLineEdit { background-color: #3c3c3c; color: #f2f2f2; border: 1px solid #555555; padding: 5px; }");
-    m_passwordEdit->setStyleSheet("QLineEdit { background-color: #3c3c3c; color: #f2f2f2; border: 1px solid #555555; padding: 5px; }");
-    m_urlEdit->setStyleSheet("QLineEdit { background-color: #3c3c3c; color: #f2f2f2; border: 1px solid #555555; padding: 5px; }");
-    m_notesEdit->setStyleSheet("QTextEdit { background-color: #3c3c3c; color: #f2f2f2; border: 1px solid #555555; padding: 5px; }");
-
     formLayout->addRow("Name:", m_nameEdit);
     formLayout->addRow("Username:", m_usernameEdit);
     formLayout->addRow("Password:", m_passwordEdit);
