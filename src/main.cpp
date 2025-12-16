@@ -23,6 +23,9 @@ int main(int argc, char *argv[])
         "QSplitter::handle { background-color: #444444; }"
         "QSplitter::handle:hover { background-color: #666666; }"
         "QStatusBar { background-color: #222222; color: #f2f2f2; border-top: 1px solid #555555; }"
+        // New styles for QCompleter and its popup
+        "QCompleter { background-color: #3c3c3c; color: #f2f2f2; border: 1px solid #555555; }"
+        "QCompleter QAbstractItemView { background-color: #2b2b2b; color: #f2f2f2; border: 1px solid #555555; selection-background-color: #555555; selection-color: #ffffff; }"
     );
 
     MainWindow mainWindow;

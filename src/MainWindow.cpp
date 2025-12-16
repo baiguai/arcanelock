@@ -19,6 +19,8 @@
 #include <QItemDelegate> // Required for connecting to editor signals
 #include <QCompleter> // Required for search completer
 #include <functional> // Required for std::function for recursive lambda
+#include <QTimer> // Required for QTimer::singleShot
+#include <QClipboard> // Required for clipboard access
 
 
 // Define a simple struct to hold password record data
@@ -175,6 +177,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_searchBar, &QLineEdit::textChanged, this, &MainWindow::performSearch);
     connect(m_searchCompleter, QOverload<const QModelIndex &>::of(&QCompleter::activated),
             this, &MainWindow::jumpToSearchResult);
+    // Connect returnPressed to handle selection from search bar
+    connect(m_searchBar, &QLineEdit::returnPressed, this, &MainWindow::onSearchBarReturnPressed);
+
 
     // Initialize current mode and update status bar
     m_currentMode = Mode::TREE; // Default mode
@@ -862,10 +867,6 @@ void MainWindow::showSearchBar()
     m_searchBar->setFocus();
 }
 
-// Helper for performSearch - now a lambda
-// Removed static definition to integrate as lambda inside performSearch
-// void searchTreeRecursive(QStandardItem *item, const QString &searchText, QStandardItemModel *resultModel) { ... }
-
 void MainWindow::performSearch(const QString &text)
 {
     m_searchCompleterModel->clear();
@@ -893,6 +894,7 @@ void MainWindow::performSearch(const QString &text)
                 // Store a pointer to the original item in the main tree model
                 resultItem->setData(QVariant::fromValue(item), Qt::UserRole);
                 resultModel->appendRow(resultItem);
+                qDebug() << "Search: Added result:" << item->text() << "Original item ptr:" << (void*)item; // DEBUG
             }
         }
         // Recursively search children
@@ -908,37 +910,125 @@ void MainWindow::performSearch(const QString &text)
 
 void MainWindow::jumpToSearchResult(const QModelIndex &index)
 {
-    if (!index.isValid()) return;
+    qDebug() << "jumpToSearchResult called with index:" << index; // DEBUG
+    if (!index.isValid()) {
+        qDebug() << "jumpToSearchResult: Invalid index passed."; // DEBUG
+        return;
+    }
     
     // Get the completer item that was activated
     QStandardItem *completerItem = m_searchCompleterModel->itemFromIndex(index);
+    qDebug() << "jumpToSearchResult: completerItem valid:" << (completerItem != nullptr); // DEBUG
     if (!completerItem) return;
 
     // Retrieve the original QStandardItem pointer stored in the completer item's UserRole
     QStandardItem *originalItem = completerItem->data(Qt::UserRole).value<QStandardItem*>();
-    if (originalItem) {
-        QModelIndex treeIndex = originalItem->index();
-        
-        // Expand all parents of the original item in the main tree view
-        QModelIndex parent = treeIndex.parent();
-        while (parent.isValid()) {
-            m_treeView->expand(parent);
-            parent = parent.parent();
+    qDebug() << "jumpToSearchResult: originalItem valid:" << (originalItem != nullptr); // DEBUG
+    if (!originalItem) return;
+
+    qDebug() << "jumpToSearchResult: Original item text:" << originalItem->text() << "Ptr:" << (void*)originalItem; // DEBUG
+
+    QModelIndex treeIndex = originalItem->index();
+    qDebug() << "jumpToSearchResult: treeIndex valid:" << treeIndex.isValid(); // DEBUG
+    if (!treeIndex.isValid()) {
+        qDebug() << "jumpToSearchResult: treeIndex is NOT valid. This is a problem."; // DEBUG
+        // This might happen if the originalItem is no longer part of the model.
+        // It could also happen if the model was cleared or reset since the search.
+        // For debugging, let's try to find it from the root if originalItem is still valid.
+        // In a real app, if originalItem's index() is invalid, it means it's detached.
+
+        // Attempt to re-find the item in the main model. This is a workaround for debugging,
+        // and points to a deeper issue if originalItem->index() is consistently invalid.
+        QList<QStandardItem*> foundItems = m_treeModel->findItems(originalItem->text(), Qt::MatchRecursive);
+        if (!foundItems.isEmpty()) {
+            // Find the item that matches the pointer if possible
+            for (QStandardItem* foundItem : foundItems) {
+                if (foundItem == originalItem) {
+                    treeIndex = foundItem->index();
+                    qDebug() << "jumpToSearchResult: Refound item with valid treeIndex:" << treeIndex.isValid(); // DEBUG
+                    break;
+                }
+            }
         }
 
-        // Set the original item as the current index and ensure it's visible
-        m_treeView->setCurrentIndex(treeIndex);
-        m_treeView->scrollTo(treeIndex);
-        m_treeView->setFocus();
+        if (!treeIndex.isValid()) { // If still not valid after re-finding, then give up.
+            qDebug() << "jumpToSearchResult: Still no valid treeIndex after re-finding. Aborting."; // DEBUG
+            return;
+        }
     }
     
-    m_searchBar->hide(); // Hide search bar after selection
-    m_searchBar->clear(); // Clear search bar text
+    // Expand all parents of the original item in the main tree view
+    QModelIndex parent = treeIndex.parent();
+    while (parent.isValid()) {
+        qDebug() << "jumpToSearchResult: Expanding parent:" << m_treeModel->itemFromIndex(parent)->text(); // DEBUG
+        m_treeView->expand(parent);
+        parent = parent.parent();
+    }
+
+    qDebug() << "jumpToSearchResult: Setting current index to:" << m_treeModel->itemFromIndex(treeIndex)->text(); // DEBUG
+    m_treeView->setCurrentIndex(treeIndex);
+    qDebug() << "jumpToSearchResult: Scrolling to:" << m_treeModel->itemFromIndex(treeIndex)->text(); // DEBUG
+    m_treeView->scrollTo(treeIndex);
+    qDebug() << "jumpToSearchResult: Setting focus to treeView."; // DEBUG
+    m_treeView->setFocus();
+    
+    // Use a single shot timer to ensure the UI updates before hiding the search bar
+    QTimer::singleShot(0, this, [this]() {
+        m_searchBar->hide(); // Hide search bar after selection
+        m_searchBar->clear(); // Clear search bar text
+        qDebug() << "jumpToSearchResult: Search bar hidden and cleared."; // DEBUG
+    });
 }
 
-// Helper function to recursively serialize QStandardItem and its children into a QString
-// Removed static definition to integrate as lambda inside serializeModelToByteArray
-// void serializeItemRecursiveToString(QTextStream &outStream, QStandardItem *item, int depth) { ... }
+void MainWindow::onSearchBarReturnPressed()
+{
+    qDebug() << "onSearchBarReturnPressed called."; // DEBUG
+    QModelIndex currentIndex = m_searchCompleter->popup()->currentIndex();
+    qDebug() << "onSearchBarReturnPressed: Completer popup current index valid:" << currentIndex.isValid(); // DEBUG
+    if (currentIndex.isValid()) {
+        jumpToSearchResult(currentIndex);
+    } else {
+        // If no item is highlighted, just hide and clear the search bar
+        m_searchBar->hide();
+        m_searchBar->clear();
+        m_treeView->setFocus(); // Return focus to the tree view
+        qDebug() << "onSearchBarReturnPressed: No item highlighted, search bar hidden."; // DEBUG
+    }
+}
+
+void MainWindow::copyPasswordToClipboard()
+{
+    qDebug() << "copyPasswordToClipboard called."; // DEBUG
+    QModelIndex currentIndex = m_treeView->currentIndex();
+    if (!currentIndex.isValid()) {
+        statusBar()->showMessage(tr("No item selected to copy password from."), 3000);
+        qDebug() << "copyPasswordToClipboard: No item selected."; // DEBUG
+        return;
+    }
+
+    QStandardItem *selectedItem = m_treeModel->itemFromIndex(currentIndex);
+    if (!selectedItem) {
+        statusBar()->showMessage(tr("Error: Could not retrieve selected item data."), 3000);
+        qDebug() << "copyPasswordToClipboard: Could not retrieve selected item."; // DEBUG
+        return;
+    }
+
+    if (selectedItem->data(Qt::UserRole).canConvert<PasswordRecord>()) {
+        PasswordRecord record = selectedItem->data(Qt::UserRole).value<PasswordRecord>();
+        if (!record.isEmpty()) {
+            QApplication::clipboard()->setText(record.password);
+            statusBar()->showMessage(tr("Password for '%1' copied to clipboard.").arg(record.name), 3000);
+            qDebug() << "copyPasswordToClipboard: Password copied for:" << record.name; // DEBUG
+        } else {
+            statusBar()->showMessage(tr("Selected item is not a password record."), 3000);
+            qDebug() << "copyPasswordToClipboard: Selected item is not a password record (empty record)."; // DEBUG
+        }
+    } else {
+        statusBar()->showMessage(tr("Selected item is not a password record."), 3000);
+        qDebug() << "copyPasswordToClipboard: Selected item is not a password record (cannot convert)."; // DEBUG
+    }
+}
+
 
 QByteArray MainWindow::serializeModelToByteArray() {
     QString strData;
@@ -1116,6 +1206,9 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                     }
                     return true;
                 }
+            } else if (key == Qt::Key_Y && !(modifiers & Qt::ShiftModifier)) { // 'y' for yank password
+                copyPasswordToClipboard();
+                return true;
             }
 
             // File and item creation

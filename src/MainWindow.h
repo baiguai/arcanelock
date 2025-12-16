@@ -44,6 +44,8 @@ private slots: // New slot section
     void showSearchBar(); // New: Slot to show and focus the search bar
     void performSearch(const QString &text); // New: Slot to perform the search
     void jumpToSearchResult(const QModelIndex &index); // New: Slot to jump to a search result
+    void onSearchBarReturnPressed(); // New: Slot to handle return key press in search bar
+    void copyPasswordToClipboard(); // New: Slot to copy selected password to clipboard
 
 private:
     void setMode(Mode newMode);
