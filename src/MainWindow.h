@@ -8,6 +8,7 @@
 #include <QLabel>
 #include <QStandardItemModel> // For the tree view data
 #include <QStackedWidget> // New: For managing stacked widgets
+#include <QCompleter>
 #include <QStringList> // Required for recent files list
 
 #include "OpenDbDialog.h" // The new dialog for opening files
@@ -40,6 +41,9 @@ private slots: // New slot section
     void createFolder(); // New: Slot to create a new folder
     void createRecord(); // New: Slot to create a new password record
     void onEditingFinished(); // New: Slot to handle when tree view item editing is finished
+    void showSearchBar(); // New: Slot to show and focus the search bar
+    void performSearch(const QString &text); // New: Slot to perform the search
+    void jumpToSearchResult(const QModelIndex &index); // New: Slot to jump to a search result
 
 private:
     void setMode(Mode newMode);
@@ -75,6 +79,9 @@ private:
     QLineEdit *m_urlEdit;
     QTextEdit *m_notesEdit;
     QLabel *m_statusLabel; // For mode or status display, similar to the reference
+    QLineEdit *m_searchBar; // New: Search bar
+    QCompleter *m_searchCompleter; // New: Search completer
+    QStandardItemModel *m_searchCompleterModel; // New: Model for search completer
 
     QStandardItemModel *m_treeModel; // Model for the tree view
     Mode m_currentMode; // Current operational mode of the application

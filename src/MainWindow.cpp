@@ -17,6 +17,9 @@
 #include "SetMasterPasswordDialog.h" // Required for setting master password
 #include <QInputDialog> // Required for password prompt
 #include <QItemDelegate> // Required for connecting to editor signals
+#include <QCompleter> // Required for search completer
+#include <functional> // Required for std::function for recursive lambda
+
 
 // Define a simple struct to hold password record data
 struct PasswordRecord {
@@ -36,6 +39,9 @@ struct PasswordRecord {
 
 // Declare the struct as a metatype so it can be stored in QVariant
 Q_DECLARE_METATYPE(PasswordRecord)
+// Also declare QStandardItem* as a metatype
+Q_DECLARE_METATYPE(QStandardItem*)
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -154,6 +160,21 @@ MainWindow::MainWindow(QWidget *parent)
     // --- Status Bar (using QLabel for now) ---
     m_statusLabel = new QLabel("", this); // Initialize with empty text
     statusBar()->addWidget(m_statusLabel);
+
+    // Search Bar
+    m_searchBar = new QLineEdit(this);
+    m_searchBar->setPlaceholderText("Search...");
+    m_searchBar->hide();
+    statusBar()->addPermanentWidget(m_searchBar);
+
+    m_searchCompleterModel = new QStandardItemModel(this);
+    m_searchCompleter = new QCompleter(m_searchCompleterModel, this);
+    m_searchCompleter->setCaseSensitivity(Qt::CaseInsensitive);
+    m_searchBar->setCompleter(m_searchCompleter);
+
+    connect(m_searchBar, &QLineEdit::textChanged, this, &MainWindow::performSearch);
+    connect(m_searchCompleter, QOverload<const QModelIndex &>::of(&QCompleter::activated),
+            this, &MainWindow::jumpToSearchResult);
 
     // Initialize current mode and update status bar
     m_currentMode = Mode::TREE; // Default mode
@@ -830,46 +851,133 @@ void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModel
         
         m_recordDisplay->setHtml(displayHtml.arg(record.name, record.name, record.username, QString(record.password.length(), '*'), record.url, record.notes));
 
+    } else {
+        m_recordDisplay->setText("This is a folder or category. Select a password entry to see details.");
     }
+}
+
+void MainWindow::showSearchBar()
+{
+    m_searchBar->show();
+    m_searchBar->setFocus();
+}
+
+// Helper for performSearch - now a lambda
+// Removed static definition to integrate as lambda inside performSearch
+// void searchTreeRecursive(QStandardItem *item, const QString &searchText, QStandardItemModel *resultModel) { ... }
+
+void MainWindow::performSearch(const QString &text)
+{
+    m_searchCompleterModel->clear();
+    if (text.isEmpty()) {
+        m_searchCompleter->popup()->hide(); // Hide completer if search text is empty
+        return;
+    }
+
+    // Recursive search lambda
+    std::function<void(QStandardItem *, const QString &, QStandardItemModel *)> searchTreeRecursiveLambda = 
+        [&](QStandardItem *item, const QString &searchText, QStandardItemModel *resultModel) {
+        if (!item) return;
+
+        // Check if the current item is a password record
+        if (item->data(Qt::UserRole).canConvert<PasswordRecord>()) {
+            PasswordRecord record = item->data(Qt::UserRole).value<PasswordRecord>();
+            // Check if any field contains the search text (case-insensitive)
+            if (record.name.contains(searchText, Qt::CaseInsensitive) ||
+                record.username.contains(searchText, Qt::CaseInsensitive) ||
+                record.url.contains(searchText, Qt::CaseInsensitive) ||
+                record.notes.contains(searchText, Qt::CaseInsensitive)) 
+            {
+                // Create a new item for the completer model
+                QStandardItem *resultItem = new QStandardItem(item->text());
+                // Store a pointer to the original item in the main tree model
+                resultItem->setData(QVariant::fromValue(item), Qt::UserRole);
+                resultModel->appendRow(resultItem);
+            }
+        }
+        // Recursively search children
+        for (int i = 0; i < item->rowCount(); ++i) {
+            searchTreeRecursiveLambda(item->child(i), searchText, resultModel);
+        }
+    };
+
+    // Start recursive search from the invisible root item of the main tree model
+    searchTreeRecursiveLambda(m_treeModel->invisibleRootItem(), text, m_searchCompleterModel);
+    m_searchCompleter->complete();
+}
+
+void MainWindow::jumpToSearchResult(const QModelIndex &index)
+{
+    if (!index.isValid()) return;
+    
+    // Get the completer item that was activated
+    QStandardItem *completerItem = m_searchCompleterModel->itemFromIndex(index);
+    if (!completerItem) return;
+
+    // Retrieve the original QStandardItem pointer stored in the completer item's UserRole
+    QStandardItem *originalItem = completerItem->data(Qt::UserRole).value<QStandardItem*>();
+    if (originalItem) {
+        QModelIndex treeIndex = originalItem->index();
+        
+        // Expand all parents of the original item in the main tree view
+        QModelIndex parent = treeIndex.parent();
+        while (parent.isValid()) {
+            m_treeView->expand(parent);
+            parent = parent.parent();
+        }
+
+        // Set the original item as the current index and ensure it's visible
+        m_treeView->setCurrentIndex(treeIndex);
+        m_treeView->scrollTo(treeIndex);
+        m_treeView->setFocus();
+    }
+    
+    m_searchBar->hide(); // Hide search bar after selection
+    m_searchBar->clear(); // Clear search bar text
 }
 
 // Helper function to recursively serialize QStandardItem and its children into a QString
-void serializeItemRecursiveToString(QTextStream &outStream, QStandardItem *item, int depth) {
-    if (!item) return;
-
-    // Indent based on depth
-    for (int i = 0; i < depth; ++i) {
-        outStream << "  ";
-    }
-
-    // Write item text
-    outStream << "- " << item->text() << "\n";
-
-    // If it has PasswordRecord data, write it
-    if (item->data(Qt::UserRole).canConvert<PasswordRecord>()) {
-        PasswordRecord record = item->data(Qt::UserRole).value<PasswordRecord>();
-        if (!record.isEmpty()) {
-            for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  name: " << record.name << "\n";
-            for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  username: " << record.username << "\n";
-            for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  password: " << record.password << "\n"; // Placeholder: NO ENCRYPTION
-            for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  url: " << record.url << "\n";
-            for (int i = 0; i < depth + 1; ++i) { outStream << "  "; } outStream << "  notes: |\n";
-            QStringList notesLines = record.notes.split('\n');
-            for (const QString &line : notesLines) {
-                for (int i = 0; i < depth + 2; ++i) { outStream << "  "; } outStream << line << "\n";
-            }
-        }
-    }
-
-    // Recursively serialize children
-    for (int i = 0; i < item->rowCount(); ++i) {
-        serializeItemRecursiveToString(outStream, item->child(i), depth + 1);
-    }
-}
+// Removed static definition to integrate as lambda inside serializeModelToByteArray
+// void serializeItemRecursiveToString(QTextStream &outStream, QStandardItem *item, int depth) { ... }
 
 QByteArray MainWindow::serializeModelToByteArray() {
     QString strData;
     QTextStream out(&strData);
+
+    // Recursive serialize lambda
+    std::function<void(QTextStream &, QStandardItem *, int)> serializeItemRecursiveToStringLambda = 
+        [&](QTextStream &outStreamLambda, QStandardItem *item, int depth) {
+        if (!item) return;
+
+        // Indent based on depth
+        for (int i = 0; i < depth; ++i) {
+            outStreamLambda << "  ";
+        }
+
+        // Write item text
+        outStreamLambda << "- " << item->text() << "\n";
+
+        // If it has PasswordRecord data, write it
+        if (item->data(Qt::UserRole).canConvert<PasswordRecord>()) {
+            PasswordRecord record = item->data(Qt::UserRole).value<PasswordRecord>();
+            if (!record.isEmpty()) {
+                for (int i = 0; i < depth + 1; ++i) { outStreamLambda << "  "; } outStreamLambda << "  name: " << record.name << "\n";
+                for (int i = 0; i < depth + 1; ++i) { outStreamLambda << "  "; } outStreamLambda << "  username: " << record.username << "\n";
+                for (int i = 0; i < depth + 1; ++i) { outStreamLambda << "  "; } outStreamLambda << "  password: " << record.password << "\n"; // Placeholder: NO ENCRYPTION
+                for (int i = 0; i < depth + 1; ++i) { outStreamLambda << "  "; } outStreamLambda << "  url: " << record.url << "\n";
+                for (int i = 0; i < depth + 1; ++i) { outStreamLambda << "  "; } outStreamLambda << "  notes: |\n";
+                QStringList notesLines = record.notes.split('\n');
+                for (const QString &line : notesLines) {
+                    for (int i = 0; i < depth + 2; ++i) { outStreamLambda << "  "; } outStreamLambda << line << "\n";
+                }
+            }
+        }
+
+        // Recursively serialize children
+        for (int i = 0; i < item->rowCount(); ++i) {
+            serializeItemRecursiveToStringLambda(outStreamLambda, item->child(i), depth + 1);
+        }
+    };
 
     out << "# ArcaneLock Password Database\n";
     out << "# Format: Item Name\n";
@@ -881,7 +989,7 @@ QByteArray MainWindow::serializeModelToByteArray() {
 
     QStandardItem *rootItem = m_treeModel->invisibleRootItem();
     for (int i = 0; i < rootItem->rowCount(); ++i) {
-        serializeItemRecursiveToString(out, rootItem->child(i), 0);
+        serializeItemRecursiveToStringLambda(out, rootItem->child(i), 0);
     }
     return strData.toUtf8();
 }
@@ -974,6 +1082,21 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         Qt::Key key = static_cast<Qt::Key>(keyEvent->key());
         Qt::KeyboardModifiers modifiers = keyEvent->modifiers();
 
+        // Handle search bar interaction
+        if (m_searchBar->isVisible()) {
+            if (key == Qt::Key_Escape) {
+                m_searchBar->hide();
+                m_searchBar->clear();
+                m_treeView->setFocus();
+                return true;
+            }
+            // If the search bar has focus, let it handle its own key events normally
+            if (m_searchBar->hasFocus()) {
+                return QMainWindow::eventFilter(obj, event);
+            }
+        }
+
+
         if (m_currentMode == Mode::TREE) {
             // If an item is being edited in the tree view, don't process any other keybindings
             if (m_isEditingTreeItem) {
@@ -1018,6 +1141,9 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                 } else {
                     saveDatabase();
                 }
+                return true;
+            } else if (key == Qt::Key_Slash) {
+                showSearchBar();
                 return true;
             }
 
