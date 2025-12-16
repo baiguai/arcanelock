@@ -39,6 +39,7 @@ private slots: // New slot section
     void openDatabase(); // New: Slot to open a database
     void createFolder(); // New: Slot to create a new folder
     void createRecord(); // New: Slot to create a new password record
+    void onEditingFinished(); // New: Slot to handle when tree view item editing is finished
 
 private:
     void setMode(Mode newMode);
@@ -81,6 +82,7 @@ private:
     QList<int> m_splitterSizes; // Stores the splitter sizes to restore them
     QString m_currentFilePath; // Stores the path of the current database file
     bool m_isModalDialogActive = false; // Is a modal dialog like 'Save As' currently active?
+    bool m_isEditingTreeItem = false; // Is an item in the tree view being edited?
     QStringList m_recentFiles; // Stores the list of recently opened files
 };
 

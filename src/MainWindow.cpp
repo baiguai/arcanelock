@@ -16,6 +16,7 @@
 #include <sodium.h> // Required for libsodium cryptography
 #include "SetMasterPasswordDialog.h" // Required for setting master password
 #include <QInputDialog> // Required for password prompt
+#include <QItemDelegate> // Required for connecting to editor signals
 
 // Define a simple struct to hold password record data
 struct PasswordRecord {
@@ -121,6 +122,12 @@ MainWindow::MainWindow(QWidget *parent)
     // Connect selection changed signal to slot
     connect(m_treeView->selectionModel(), &QItemSelectionModel::currentChanged,
             this, &MainWindow::onTreeSelectionChanged);
+    
+    // Connect item delegate signals to handle end of editing
+    connect(m_treeView->itemDelegate(), &QAbstractItemDelegate::commitData,
+            this, &MainWindow::onEditingFinished);
+    connect(m_treeView->itemDelegate(), &QAbstractItemDelegate::closeEditor,
+            this, &MainWindow::onEditingFinished);
 
 
     // --- Right Panel: Stacked Widget for Record Display and Editable View ---
@@ -162,6 +169,11 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     // Destructor is empty as Qt's parent-child mechanism handles deletion of child widgets
+}
+
+void MainWindow::onEditingFinished()
+{
+    m_isEditingTreeItem = false;
 }
 
 void MainWindow::loadRecentFiles()
@@ -570,6 +582,7 @@ void MainWindow::createFolder()
     QStandardItem *newItem = new QStandardItem("New Folder");
     parentItem->appendRow(newItem);
     m_treeView->setCurrentIndex(newItem->index());
+    m_isEditingTreeItem = true;
     m_treeView->edit(newItem->index()); // Allow immediate renaming
 }
 
@@ -962,7 +975,25 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         Qt::KeyboardModifiers modifiers = keyEvent->modifiers();
 
         if (m_currentMode == Mode::TREE) {
+            // If an item is being edited in the tree view, don't process any other keybindings
+            if (m_isEditingTreeItem) {
+                return QMainWindow::eventFilter(obj, event);
+            }
+
             // All TREE mode keybindings go here
+            if (key == Qt::Key_I && !(modifiers & Qt::ShiftModifier)) { // 'i' for insert/rename
+                QModelIndex currentIndex = m_treeView->currentIndex();
+                if (currentIndex.isValid()) {
+                    QStandardItem *item = m_treeModel->itemFromIndex(currentIndex);
+                    if (item->data(Qt::UserRole).canConvert<PasswordRecord>()) {
+                        enterInsertMode(currentIndex); // Edit record
+                    } else {
+                        m_isEditingTreeItem = true;
+                        m_treeView->edit(currentIndex); // Edit folder name
+                    }
+                    return true;
+                }
+            }
 
             // File and item creation
             if (key == Qt::Key_Q) {
@@ -1015,14 +1046,6 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                     return true;
                 }
             } else { // No Shift modifier
-                if (key == Qt::Key_I) {
-                    QModelIndex currentIndex = m_treeView->currentIndex();
-                    if (currentIndex.isValid() && m_treeModel->itemFromIndex(currentIndex)->data(Qt::UserRole).canConvert<PasswordRecord>()) {
-                        enterInsertMode(currentIndex);
-                        return true;
-                    }
-                }
-
                 // Navigation
                 Qt::Key simulatedKey = Qt::Key_unknown;
                 bool handled = false;
