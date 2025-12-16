@@ -12,7 +12,8 @@ int main(int argc, char *argv[])
         "QTreeView { background-color: #2b2b2b; color: #f2f2f2; alternate-background-color: #3c3c3c; border: 1px solid #555555; }"
         "QTreeView::item:selected { background-color: #555555; color: #ffffff; }"
         "QTextEdit { background-color: #3c3c3c; color: #f2f2f2; border: 1px solid #555555; }"
-        "QLineEdit { background-color: #3c3c3c; color: #f2f2f2; border: 1px solid #555555; padding: 5px; }"
+        "QLineEdit { background-color: #3c3c3c; color: #f2f2f2; border: 1px solid #555555; padding: 3px 5px; min-height: 24px; }" // Adjusted height and padding
+        "QTreeView QLineEdit { min-height: 24px; }" // Ensure this applies to the in-place editor
         "QLabel { color: #f2f2f2; }"
         "QPushButton { background-color: #4a4a4a; color: #f2f2f2; border: 1px solid #555555; padding: 5px; min-width: 70px; }"
         "QPushButton:hover { background-color: #5a5a5a; }"
