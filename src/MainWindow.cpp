@@ -612,6 +612,13 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                 return true;
             }
         }
+    } else if (event->type() == QEvent::FocusIn) {
+        if (QLineEdit *lineEdit = qobject_cast<QLineEdit*>(obj)) {
+            lineEdit->selectAll();
+        } else if (QTextEdit *textEdit = qobject_cast<QTextEdit*>(obj)) {
+            textEdit->selectAll();
+        }
+        return false; // Crucially, return false so the event continues to be processed by the widget
     }
     return QMainWindow::eventFilter(obj, event);
 }
