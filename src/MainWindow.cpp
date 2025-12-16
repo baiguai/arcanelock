@@ -828,7 +828,7 @@ void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModel
                               "<p><b>Notes:</b> %6</p>"
                               "</body>";
         
-        m_recordDisplay->setHtml(displayHtml.arg(record.name, record.name, record.username, record.password, record.url, record.notes));
+        m_recordDisplay->setHtml(displayHtml.arg(record.name, record.name, record.username, QString(record.password.length(), '*'), record.url, record.notes));
 
     }
 }
