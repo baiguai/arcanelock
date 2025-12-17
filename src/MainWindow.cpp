@@ -331,7 +331,7 @@ void MainWindow::moveItemIntoSiblingFolder() {
         return;
     }
 
-    QList<QStandardItem*> itemsToMove = parentItem->takeRow(currentRow); // Changed from containerItem->takeRow to parentItem->takeRow
+    QList<QStandardItem*> itemsToMove = containerItem->takeRow(currentRow);
     if (itemsToMove.isEmpty()) {
         return;
     }
