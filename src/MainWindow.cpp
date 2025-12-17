@@ -458,6 +458,7 @@ void MainWindow::newDatabase() {
     // Clear the current model
     m_treeModel->clear();
     m_treeModel->setHorizontalHeaderLabels({"Items"}); // Re-set header if cleared
+    m_searchCompleterModel->clear(); // Clear completer model as well
 
     // Clear the current file path
     m_currentFilePath.clear();
@@ -700,6 +701,7 @@ bool MainWindow::loadModelFromFile(const QString &filePath, const QString &maste
     // Deserialize the decrypted plaintext into the model
     m_treeModel->clear();
     m_treeModel->setHorizontalHeaderLabels({"Items"});
+    m_searchCompleterModel->clear(); // Clear completer model as well
 
     QString decryptedDataString = QString::fromUtf8(decryptedPlaintext);
     QTextStream in(&decryptedDataString);
@@ -958,14 +960,21 @@ void MainWindow::onSearchBarReturnPressed()
     qDebug() << "onSearchBarReturnPressed called."; // DEBUG
     QModelIndex currentIndex = m_searchCompleter->popup()->currentIndex();
     qDebug() << "onSearchBarReturnPressed: Completer popup current index valid:" << currentIndex.isValid(); // DEBUG
+    
+    if (!currentIndex.isValid() && m_searchCompleterModel->rowCount() > 0) {
+        // If no item is highlighted but there are search results, select the first one
+        currentIndex = m_searchCompleterModel->index(0, 0);
+        qDebug() << "onSearchBarReturnPressed: No item highlighted, selecting first result."; // DEBUG
+    }
+    
     if (currentIndex.isValid()) {
         jumpToSearchResult(currentIndex);
     } else {
-        // If no item is highlighted, just hide and clear the search bar
+        // If no item is highlighted and no search results, just hide and clear the search bar
         m_searchBar->hide();
         m_searchBar->clear();
         m_treeView->setFocus(); // Return focus to the tree view
-        qDebug() << "onSearchBarReturnPressed: No item highlighted, search bar hidden."; // DEBUG
+        qDebug() << "onSearchBarReturnPressed: No search results, search bar hidden."; // DEBUG
     }
 }
 
