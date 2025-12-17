@@ -94,6 +94,7 @@ private:
     bool m_isModalDialogActive = false; // Is a modal dialog like 'Save As' currently active?
     bool m_isEditingTreeItem = false; // Is an item in the tree view being edited?
     QStringList m_recentFiles; // Stores the list of recently opened files
+    QString m_masterPassword; // Stores the master password
 };
 
 #endif // MAINWINDOW_H
