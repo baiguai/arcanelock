@@ -31,7 +31,8 @@ SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)  # Only search for headers in the ta
 
 # You might need to add specific paths for Qt6 if it's not found automatically.
 # Example:
-LIST(APPEND CMAKE_PREFIX_PATH "/mingw_64") # User-provided path for cross-compiled Qt6
+LIST(APPEND CMAKE_PREFIX_PATH "/usr/share/mingw-w64") # User-provided path. IMPORTANT: This path typically contains the MinGW-w64 toolchain itself, NOT a cross-compiled Qt6 installation. You MUST provide the path to a Qt6 installation that was built specifically for MinGW-w64.
 
 # Similarly for libsodium if it's not found:
-# LIST(APPEND CMAKE_PREFIX_PATH "/path/to/your/cross-compiled/libsodium")
+LIST(APPEND CMAKE_PREFIX_PATH "/path/to/your/cross-compiled/libsodium") # <--- REPLACE WITH YOUR ACTUAL PATH to cross-compiled libsodium
+
