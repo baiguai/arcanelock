@@ -92,7 +92,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_recordDisplay = new QTextEdit(this);
     m_recordDisplay->setReadOnly(true);
-    m_recordDisplay->setText("Select an item from the tree view to see details.");
+    m_recordDisplay->setText("");
     m_rightPanelStackedWidget->addWidget(m_recordDisplay);
 
     setupEditableRecordView(); // Initialize the editable view
@@ -813,7 +813,7 @@ void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModel
         }
 
         QString displayHtml = "<style>"
-                              "body { font-family: sans-serif; background-color: #2b2b2b; color: #f2f2f2; }"
+                              "body { font-family: sans-serif; background-color: #000; color: #fff; }"
                               "h3 { color: #f2f2f2; margin-bottom: 5px; }"
                               "p { margin: 0; padding: 2px 0; }"
                               "b { color: #aaaaaa; }"
