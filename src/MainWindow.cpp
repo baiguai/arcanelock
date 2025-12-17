@@ -477,22 +477,12 @@ void MainWindow::newDatabase() {
 }
 
 void MainWindow::saveDatabase() {
-    if (m_currentFilePath.isEmpty()) {
-        // If no file path is set, act as "Save As"
+    if (m_currentFilePath.isEmpty() || m_masterPassword.isEmpty()) {
+        // If no file path is set or no master password is set, act as "Save As"
         saveDatabaseAs();
     } else {
-        // For existing files, prompt for password
-        bool ok;
-        m_isModalDialogActive = true;
-        QString password = QInputDialog::getText(this, tr("Master Password"),
-                                                 tr("Enter master password to save:"), QLineEdit::Password,
-                                                 QString(), &ok);
-        m_isModalDialogActive = false;
-        if (ok && !password.isEmpty()) {
-            saveModelToFile(m_currentFilePath, password);
-        } else {
-            statusBar()->showMessage(tr("Save cancelled. Master password not provided."), 3000);
-        }
+        // For existing files, use the stored master password
+        saveModelToFile(m_currentFilePath, m_masterPassword);
     }
 }
 
@@ -515,6 +505,7 @@ void MainWindow::saveDatabaseAs() {
 
         if (!filePath.isEmpty()) {
             m_currentFilePath = filePath;
+            m_masterPassword = masterPassword;
             saveModelToFile(m_currentFilePath, masterPassword);
         } else {
             statusBar()->showMessage(tr("Save operation cancelled."), 3000);
@@ -610,6 +601,7 @@ void MainWindow::loadFile(const QString &filePath, bool isStartup)
         if (loadModelFromFile(filePath, password)) { // Assuming loadModelFromFile returns bool for success
             addRecentFile(filePath);
             m_currentFilePath = filePath;
+            m_masterPassword = password;
             statusBar()->showMessage(tr("Loaded %1").arg(filePath), 3000);
         } else {
             // If loading failed (e.g., incorrect password)
