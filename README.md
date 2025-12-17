@@ -38,13 +38,32 @@ brew install cmake qt@6 libsodium
 
 Installing dependencies on Windows can be more involved. You will typically need:
 
-1.  **CMake**: Download and install from [cmake.org](https://cmake.org/download/).
-2.  **A C++ Compiler**: Like MSVC (from Visual Studio) or MinGW-w64.
-3.  **Qt 6**: Download and install the Qt Online Installer from [qt.io](https://www.qt.io/download). Make sure to select the Qt 6 version for your chosen compiler (e.g., MSVC 2019 64-bit or MinGW 64-bit).
+1.  **CMake**: Download and install from [cmake.org](https://cmake.org/download/) and ensure it's added to your system PATH.
+2.  **A C++ Compiler**: Choose one and install it:
+    *   **Visual Studio**: Install the free [Visual Studio Community Edition](https://visualstudio.microsoft.com/vs/community/). During installation, select the "Desktop development with C++" workload. This provides the MSVC compiler.
+    *   **MinGW-w64**: A GCC/G++ compiler for Windows. You can install it via MSYS2 ([msys2.org](https://www.msys2.org/)) or other distributions. Ensure it's added to your system PATH.
+3.  **Qt 6**: Download and install the Qt Online Installer from [qt.io](https://www.qt.io/download).
+    *   **Crucially**, during installation, select the Qt 6 version that matches your chosen C++ compiler (e.g., "MSVC 2019 64-bit" or "MinGW 64-bit").
+    *   Note the installation path (e.g., `C:\Qt\6.x.x\msvc2019_64` or `C:\Qt\6.x.x\mingw_64`).
 4.  **libsodium**:
     *   Download pre-compiled binaries from the `libsodium` GitHub releases page (look for `libsodium-X.Y.Z-msvc.zip` or `libsodium-X.Y.Z-mingw.zip` depending on your compiler).
     *   Extract the archive to a convenient location (e.g., `C:\libsodium`).
-    *   You may need to set environment variables or pass `CMAKE_PREFIX_PATH` to CMake during configuration so it can find `libsodium`. For example, `cmake -DCMAKE_PREFIX_PATH=C:/libsodium ..` if `libsodium` is extracted to `C:\libsodium`.
+
+### Building on Windows
+
+After installing the requirements, you can use the provided `build_windows.bat` script.
+
+1.  **Open a Command Prompt or PowerShell**: Navigate to the root directory of the ArcaneLock project.
+2.  **Edit `build_windows.bat`**: Open `build_windows.bat` in a text editor.
+    *   **Set `QT_INSTALL_DIR`**: Modify the `set QT_INSTALL_DIR=C:\path\to\your\Qt\6.x.x` line to point to your actual Qt 6 installation directory (e.g., `C:\Qt\6.x.x\msvc2019_64` or `C:\Qt\6.x.x\mingw_64`).
+    *   **Set `LIBSODIUM_INSTALL_DIR`**: Modify the `set LIBSODIUM_INSTALL_DIR=C:\path\to\your\libsodium` line to point to where you extracted `libsodium` (e.g., `C:\libsodium`).
+    *   **Choose CMake Generator**: Uncomment the appropriate `set CMAKE_GENERATOR="..."` line for your chosen C++ compiler (e.g., "Visual Studio 17 2022" for MSVC or "MinGW Makefiles" for MinGW).
+3.  **Run the build script**:
+    ```cmd
+    build_windows.bat
+    ```
+    This script will create a `build_windows` directory, configure CMake, and compile the project.
+4.  **Run the application**: If the build is successful, the executable will be located in `build_windows\<Config>\arcanelock.exe` (for Visual Studio) or `build_windows\arcanelock.exe` (for MinGW). You can run it directly.
 
 ## Building the Project
 

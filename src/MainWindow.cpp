@@ -21,6 +21,7 @@
 #include <functional> // Required for std::function for recursive lambda
 #include <QTimer> // Required for QTimer::singleShot
 #include <QClipboard> // Required for clipboard access
+#include <QMessageBox> // Required for QMessageBox
 
 
 // Define a simple struct to hold password record data
@@ -92,7 +93,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_recordDisplay = new QTextEdit(this);
     m_recordDisplay->setReadOnly(true);
-    m_recordDisplay->setText("Select an item from the tree view to see details.");
+    m_recordDisplay->setText("");
     m_rightPanelStackedWidget->addWidget(m_recordDisplay);
 
     setupEditableRecordView(); // Initialize the editable view
@@ -458,6 +459,7 @@ void MainWindow::newDatabase() {
     // Clear the current model
     m_treeModel->clear();
     m_treeModel->setHorizontalHeaderLabels({"Items"}); // Re-set header if cleared
+    m_searchCompleterModel->clear(); // Clear completer model as well
 
     // Clear the current file path
     m_currentFilePath.clear();
@@ -700,6 +702,7 @@ bool MainWindow::loadModelFromFile(const QString &filePath, const QString &maste
     // Deserialize the decrypted plaintext into the model
     m_treeModel->clear();
     m_treeModel->setHorizontalHeaderLabels({"Items"});
+    m_searchCompleterModel->clear(); // Clear completer model as well
 
     QString decryptedDataString = QString::fromUtf8(decryptedPlaintext);
     QTextStream in(&decryptedDataString);
@@ -813,7 +816,7 @@ void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModel
         }
 
         QString displayHtml = "<style>"
-                              "body { font-family: sans-serif; background-color: #2b2b2b; color: #f2f2f2; }"
+                              "body { font-family: sans-serif; background-color: #000; color: #fff; }"
                               "h3 { color: #f2f2f2; margin-bottom: 5px; }"
                               "p { margin: 0; padding: 2px 0; }"
                               "b { color: #aaaaaa; }"
@@ -958,14 +961,21 @@ void MainWindow::onSearchBarReturnPressed()
     qDebug() << "onSearchBarReturnPressed called."; // DEBUG
     QModelIndex currentIndex = m_searchCompleter->popup()->currentIndex();
     qDebug() << "onSearchBarReturnPressed: Completer popup current index valid:" << currentIndex.isValid(); // DEBUG
+    
+    if (!currentIndex.isValid() && m_searchCompleterModel->rowCount() > 0) {
+        // If no item is highlighted but there are search results, select the first one
+        currentIndex = m_searchCompleterModel->index(0, 0);
+        qDebug() << "onSearchBarReturnPressed: No item highlighted, selecting first result."; // DEBUG
+    }
+    
     if (currentIndex.isValid()) {
         jumpToSearchResult(currentIndex);
     } else {
-        // If no item is highlighted, just hide and clear the search bar
+        // If no item is highlighted and no search results, just hide and clear the search bar
         m_searchBar->hide();
         m_searchBar->clear();
         m_treeView->setFocus(); // Return focus to the tree view
-        qDebug() << "onSearchBarReturnPressed: No item highlighted, search bar hidden."; // DEBUG
+        qDebug() << "onSearchBarReturnPressed: No search results, search bar hidden."; // DEBUG
     }
 }
 
@@ -1159,7 +1169,6 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
             }
         }
 
-
         if (m_currentMode == Mode::TREE) {
             // If an item is being edited in the tree view, don't process any other keybindings
             if (m_isEditingTreeItem) {
@@ -1167,7 +1176,10 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
             }
 
             // All TREE mode keybindings go here
-            if (key == Qt::Key_I && !(modifiers & Qt::ShiftModifier)) { // 'i' for insert/rename
+            if (key == Qt::Key_Question) { // '?' for help dialog
+                showHelpDialog();
+                return true;
+            } else if (key == Qt::Key_I && !(modifiers & Qt::ShiftModifier)) { // 'i' for insert/rename
                 QModelIndex currentIndex = m_treeView->currentIndex();
                 if (currentIndex.isValid()) {
                     QStandardItem *item = m_treeModel->itemFromIndex(currentIndex);
@@ -1286,11 +1298,14 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
                         m_notesEdit->setFocus();
                     } else if (focusedWidget == m_usernameEdit) {
                         m_nameEdit->setFocus();
-                    } else if (focusedWidget == m_passwordEdit) {
+                    }
+                    else if (focusedWidget == m_passwordEdit) {
                         m_usernameEdit->setFocus();
-                    } else if (focusedWidget == m_urlEdit) {
+                    }
+                    else if (focusedWidget == m_urlEdit) {
                         m_passwordEdit->setFocus();
-                    } else if (focusedWidget == m_notesEdit) {
+                    }
+                    else if (focusedWidget == m_notesEdit) {
                         m_urlEdit->setFocus();
                     } else {
                         m_notesEdit->setFocus();
@@ -1323,4 +1338,44 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         return false;
     }
     return QMainWindow::eventFilter(obj, event);
+}
+
+void MainWindow::showHelpDialog()
+{
+    QString helpText = "<b>Arcane Lock Keybindings (TREE mode):</b><br><br>"
+                       "<b>Navigation:</b><br>"
+                       "  <b>j</b>: Move selection down<br>"
+                       "  <b>k</b>: Move selection up<br>"
+                       "  <b>h</b>: Collapse current node or move to parent<br>"
+                       "  <b>l</b>: Expand current node<br><br>"
+                       "<b>Actions:</b><br>"
+                       "  <b>i</b>: Edit selected record / Rename folder<br>"
+                       "  <b>y</b>: Yank (copy) password to clipboard<br>"
+                       "  <b>/</b>: Show search bar<br>"
+                       "  <b>Shift+A</b>: Create new folder<br>"
+                       "  <b>a</b>: Create new record<br>"
+                       "  <b>Shift+D</b>: Delete selected item<br>"
+                       "  <b>Shift+J</b>: Move selected item down<br>"
+                       "  <b>Shift+K</b>: Move selected item up<br>"
+                       "  <b>Shift+H</b>: Move selected item to parent or root<br>"
+                       "  <b>Shift+L</b>: Move selected item into sibling folder<br>"
+                       "  <b>Shift+E</b>: Expand all nodes<br>"
+                       "  <b>Shift+C</b>: Collapse all nodes<br><br>"
+                       "<b>File Operations:</b><br>"
+                       "  <b>n</b>: New database<br>"
+                       "  <b>o</b>: Open database<br>"
+                       "  <b>s</b>: Save database<br>"
+                       "  <b>Shift+S</b>: Save database as...<br>"
+                       "  <b>q</b>: Quit application<br>"
+                       "  <b>?</b>: Show this help dialog<br><br>"
+                       "<b>INSERT mode:</b><br>"
+                       "  <b>Esc</b>: Exit INSERT mode<br>"
+                       "  <b>Ctrl+Return</b>: Save record and exit INSERT mode<br>"
+                       "  <b>Tab/Shift+Tab</b>: Navigate between fields<br>";
+
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle("Arcane Lock Help");
+    msgBox.setText(helpText);
+    msgBox.setIcon(QMessageBox::NoIcon);
+    msgBox.exec();
 }
