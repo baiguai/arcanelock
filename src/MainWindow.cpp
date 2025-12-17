@@ -781,7 +781,11 @@ bool MainWindow::loadModelFromFile(const QString &filePath, const QString &maste
     }
 
     // No need to close file here, already done after reading all content.
-    m_treeView->expandAll();
+    collapseAllNodes(); // Collapse all nodes by default after loading
+    QModelIndex firstItem = m_treeModel->index(0, 0);
+    if (firstItem.isValid()) {
+        m_treeView->setCurrentIndex(firstItem);
+    }
     return true; // Indicate success
 }
 
