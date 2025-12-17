@@ -39,3 +39,10 @@
 
 # debug information files
 *.dwo
+
+# Build directories
+build/
+build_windows/
+
+# Log files
+memory_usage_*.log
