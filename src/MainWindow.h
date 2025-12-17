@@ -46,6 +46,7 @@ private slots: // New slot section
     void jumpToSearchResult(const QModelIndex &index); // New: Slot to jump to a search result
     void onSearchBarReturnPressed(); // New: Slot to handle return key press in search bar
     void copyPasswordToClipboard(); // New: Slot to copy selected password to clipboard
+    void showHelpDialog(); // New: Slot to show the help dialog
 
 private:
     void setMode(Mode newMode);
