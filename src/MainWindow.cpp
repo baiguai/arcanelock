@@ -224,6 +224,10 @@ void MainWindow::expandAllNodes() {
 
 void MainWindow::collapseAllNodes() {
     m_treeView->collapseAll();
+    QModelIndex firstItem = m_treeModel->index(0, 0);
+    if (firstItem.isValid()) {
+        m_treeView->setCurrentIndex(firstItem);
+    }
 }
 
 // --- Tree Item Manipulation Implementations ---
