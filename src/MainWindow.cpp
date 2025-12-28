@@ -91,8 +91,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_splitter->addWidget(m_rightPanelStackedWidget);
     m_rightPanelStackedWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    m_recordDisplay = new QTextEdit(this);
+    m_recordDisplay = new QTextBrowser(this);
     m_recordDisplay->setReadOnly(true);
+    m_recordDisplay->setOpenExternalLinks(true);
     m_recordDisplay->setText("");
     m_rightPanelStackedWidget->addWidget(m_recordDisplay);
 
@@ -826,7 +827,7 @@ void MainWindow::onTreeSelectionChanged(const QModelIndex &current, const QModel
                               "<p><b>Name:</b> %2</p>"
                               "<p><b>Username:</b> %3</p>"
                               "<p><b>Password:</b> %4</p>"
-                              "<p><b>URL:</b> %5</p>"
+                              "<p><b>URL:</b> <a href=\"%5\">%5</a></p>"
                               "<p><b>Notes:</b> %6</p>"
                               "</body>";
         

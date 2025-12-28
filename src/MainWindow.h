@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QSplitter>
 #include <QTreeView>
+#include <QTextBrowser>
 #include <QTextEdit>
 #include <QLabel>
 #include <QStandardItemModel> // For the tree view data
@@ -74,7 +75,7 @@ private:
     QSplitter *m_splitter;
     QTreeView *m_treeView;
     QStackedWidget *m_rightPanelStackedWidget; // Manages read-only and editable views
-    QTextEdit *m_recordDisplay; // Read-only display of password record (now a child of m_rightPanelStackedWidget)
+    QTextBrowser *m_recordDisplay; // Read-only display of password record (now a child of m_rightPanelStackedWidget)
     QWidget *m_editableRecordView; // Container for editable fields (now a child of m_rightPanelStackedWidget)
     QLineEdit *m_nameEdit;
     QLineEdit *m_usernameEdit;
