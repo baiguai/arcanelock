@@ -762,7 +762,7 @@ bool MainWindow::loadModelFromFile(const QString &filePath, const QString &maste
                         }
                         // Check if the note line is more indented than the expected level for record fields
                         // This assumes note lines are indented by at least `indentation + 2`
-                        if (noteIndentation > indentation + 2) {
+                        if (noteIndentation >= indentation + 2) {
                             notesLines.append(noteLine.trimmed());
                         } else {
                             // If not, it means the note block has ended. Seek back to read this line again
@@ -1042,7 +1042,7 @@ QByteArray MainWindow::serializeModelToByteArray() {
                 for (int i = 0; i < depth + 1; ++i) { outStreamLambda << "  "; } outStreamLambda << "  notes: |\n";
                 QStringList notesLines = record.notes.split('\n');
                 for (const QString &line : notesLines) {
-                    for (int i = 0; i < depth + 2; ++i) { outStreamLambda << "  "; } outStreamLambda << line << "\n";
+                    for (int i = 0; i < depth + 3; ++i) { outStreamLambda << "  "; } outStreamLambda << line << "\n";
                 }
             }
         }
